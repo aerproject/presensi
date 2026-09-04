@@ -1,6 +1,6 @@
 # Presensi Digital
 
-**Master Repository — AerProject**
+**School Attendance Management System**
 
 Repository utama untuk pengembangan, distribusi, instalasi, dan pemeliharaan aplikasi **Presensi Digital**.
 
@@ -10,19 +10,22 @@ Repository utama untuk pengembangan, distribusi, instalasi, dan pemeliharaan apl
 
 ## 🎯 Tentang Project
 
-Presensi Digital adalah aplikasi absensi siswa yang dirancang untuk lingkungan sekolah, dengan dukungan:
+Presensi Digital adalah sistem manajemen kehadiran siswa untuk lingkungan sekolah.
 
-- Absensi siswa secara real-time
-- Manajemen data siswa dan penempatan akademik
-- Pengajuan izin / sakit oleh orang tua
-- Persetujuan pengajuan oleh operator/admin
-- Dashboard publik status kehadiran
-- Penandaan Alpha otomatis
+Project ini mencakup:
+
+- Manajemen data siswa
+- Penempatan siswa berdasarkan tahun pelajaran
+- Absensi siswa
+- Izin dan sakit
+- Persetujuan pengajuan orang tua
+- Status Alpha otomatis
+- Dashboard kehadiran
 - Integrasi WhatsApp Gateway
-- Sistem License Trial dan Full
-- Installer otomatis
+- License Trial dan Full
+- Installer aplikasi
 - Scheduler otomatis
-- Mekanisme update dan maintenance
+- Sistem update dan maintenance
 
 ---
 
