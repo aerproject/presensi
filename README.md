@@ -80,3 +80,13 @@ presensi/
 ├── composer.json
 ├── spark
 └── README.md
+
+
+### Commit-nya
+
+Di bagian bawah editor GitHub:
+
+**Commit message:**
+
+```text
+MASTER-01 — Repository Foundation
