@@ -84,4 +84,6 @@ presensi/
 ├── spark
 └── README.md
 
+---
 
+**AerProject © 2026**
