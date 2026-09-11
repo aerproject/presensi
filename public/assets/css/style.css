@@ -1,0 +1,47 @@
+/* Layout dasar */
+body {
+  background-color: #f4f9ff;
+  padding-bottom: 80px;
+}
+
+/* Footer tetap di bawah */
+.footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: #fff;
+  text-align: center;
+  padding: 10px;
+  font-size: 14px;
+  border-top: 1px solid #ddd;
+}
+
+/* Navigasi pagination */
+.pagination {
+  display: flex;
+  justify-content: center;
+}
+
+.pagination li {
+  margin: 0 2px;
+}
+
+.pagination li a,
+.pagination li span {
+  padding: 6px 12px;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  color: #0d6efd;
+  text-decoration: none;
+}
+
+.pagination li.active span {
+  background-color: #0d6efd;
+  color: white;
+  border-color: #0d6efd;
+}
+
+.pagination li.disabled span {
+  color: #6c757d;
+}

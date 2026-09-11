@@ -1,0 +1,83 @@
+# ==================================================
+# PRESENSI AER
+# Production Secrets
+# ==================================================
+
+.env
+
+
+# ==================================================
+# Composer Dependencies
+# ==================================================
+
+/vendor/
+
+
+# ==================================================
+# CodeIgniter Runtime
+# ==================================================
+
+/writable/cache/*
+!/writable/cache/.gitkeep
+
+/writable/logs/*
+!/writable/logs/.gitkeep
+
+/writable/session/*
+!/writable/session/.gitkeep
+
+/writable/backups/
+
+
+# ==================================================
+# License Runtime Secrets
+# ==================================================
+
+/writable/license/encryption.key
+
+
+# ==================================================
+# Production Uploads
+# ==================================================
+
+/public/uploads/kop/*
+!/public/uploads/kop/.gitkeep
+
+/public/uploads/logo/*
+!/public/uploads/logo/.gitkeep
+
+/public/uploads/qrcodes/*
+!/public/uploads/qrcodes/.gitkeep
+
+/public/uploads/surat_izin/*
+!/public/uploads/surat_izin/.gitkeep
+
+
+# ==================================================
+# Development Backup Artifacts
+# ==================================================
+
+*.bak
+*.bak*
+*.backup
+*.old
+
+*before-*
+
+
+# ==================================================
+# Design Source Files
+# ==================================================
+
+/public/images/LogoAPP.psd
+
+
+# ==================================================
+# OS / Editor
+# ==================================================
+
+.DS_Store
+Thumbs.db
+
+.idea/
+.vscode/

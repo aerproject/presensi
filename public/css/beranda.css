@@ -1,0 +1,17 @@
+/* Beranda Dashboard */
+
+.dashboard-stat-icon {
+    font-size: 3.5rem;
+}
+
+.dashboard-stat-icon-light {
+    opacity: 0.65;
+}
+
+.dashboard-stat-icon-dark {
+    opacity: 0.5;
+}
+
+.dashboard-chart-container {
+    height: 200px;
+}

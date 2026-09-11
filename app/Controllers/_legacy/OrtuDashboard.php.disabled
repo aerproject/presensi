@@ -1,0 +1,18 @@
+<?php
+
+use App\Services\OrtuService;
+
+public function dashboard()
+{
+    $session = session();
+    $userId = $session->get('user_id');
+
+    if (!$session->get('isLoggedIn') || $session->get('role') !== 'ortu') {
+        return redirect()->to('/auth/login');
+    }
+
+    $ortuService = new OrtuService($userId);
+    $data = $ortuService->getDashboardData($this->request);
+
+    return view('beranda/dashboard_ortu', $data);
+}

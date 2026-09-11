@@ -1,0 +1,22 @@
+<?php
+
+use App\Services\OrtuService;
+
+public function izin()
+{
+    $session = session();
+    $userId = $session->get('user_id');
+
+    if (!$session->get('isLoggedIn') || $session->get('role') !== 'ortu') {
+        return redirect()->to('/auth/login');
+    }
+
+    $ortuService = new OrtuService($userId);
+    $result = $ortuService->submitIzin($this->request);
+
+    if ($result['status'] === 'invalid') {
+        return redirect()->to('/izin')->withInput()->with('errors', $result['errors']);
+    }
+
+    return redirect()->to('/ortu/dashboard')->with($result['status'], $result['message']);
+}

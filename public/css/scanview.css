@@ -1,0 +1,38 @@
+/* ================= Scan View ================= */
+.scan-wrapper {
+  display: flex;
+  flex-direction: column;
+  justify-content: center; /* center vertikal */
+  align-items: center; /* center horizontal */
+  text-align: center;
+}
+
+.scan-wrapper h3 {
+  word-wrap: break-word;
+  max-width: 100%;
+}
+
+#webcam-preview {
+  width: 100%;
+  max-width: 400px; /* batas maksimal di desktop */
+  height: auto;
+  border: 2px solid #dee2e6;
+  border-radius: 8px;
+  display: block;
+  margin: 0 auto; /* center horizontal */
+}
+
+#scan-result,
+#loading-spinner {
+  font-size: 1.1rem;
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+/* Responsif untuk layar kecil */
+@media (max-width: 400px) {
+  #webcam-preview {
+    max-width: 100%; /* di smartphone video ikut lebar layar */
+  }
+}

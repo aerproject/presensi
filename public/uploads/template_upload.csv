@@ -1,0 +1,4 @@
+﻿nis;password;email;nama_siswa;wa_siswa;kelas_id;jurusan_id;nama_ortu;wa_ortu;email_ortu
+12345;rahasia;siswa1@example.com;Budi Santoso;6,28123E+11;1;2;Pak Santoso;6,28988E+11;ortu1@example.com
+12346;rahasia2;siswa2@example.com;Siti Aminah;6,28111E+11;1;3;Bu Aminah;6,28445E+11;ortu2@example.com
+12347;rahasia3;siswa3@example.com;Andi Wijaya;6,28222E+11;2;4;Pak Wijaya;6,28556E+11;ortu3@example.com
