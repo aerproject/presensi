@@ -484,6 +484,18 @@ final class TrialInstall extends BaseController
      */
     public function bootstrapTrial(): ResponseInterface
     {
+        $guard = $this->guard();
+
+        if (!$guard->isAllowed()) {
+            return redirect()
+                ->to('/trial/install')
+                ->with(
+                    'error',
+                    $guard->notice()
+                    ?? 'Instalasi Trial tidak dapat dilakukan.'
+                );
+        }
+
         $licenseKey = strtoupper(
             trim(
                 (string) $this->request->getPost('license_key')
@@ -557,10 +569,10 @@ final class TrialInstall extends BaseController
             }
 
             return redirect()
-                ->to('/dashboard')
+                ->to('/auth/login')
                 ->with(
-                    'trial_activated',
-                    true
+                    'success',
+                    'Trial berhasil diaktifkan. Silakan login.'
                 );
 
         } catch (\Throwable $e) {

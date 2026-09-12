@@ -224,28 +224,73 @@
                 sebelum melakukan activation.
             </p>
 
-            <div class="actions">
-                <form
-                    method="post"
-                    action="<?= base_url('/trial/install') ?>"
-                >
-                    <?= csrf_field() ?>
+            <form
+                method="post"
+                action="<?= base_url('/trial/install/bootstrap') ?>"
+            >
+                <?= csrf_field() ?>
+
+                <div class="info">
+                    <label>
+                        <strong>Trial License Key</strong>
+                    </label>
+
+                    <input
+                        type="text"
+                        name="license_key"
+                        value="<?= esc(old('license_key')) ?>"
+                        required
+                        autocomplete="off"
+                        style="
+                            width:100%;
+                            box-sizing:border-box;
+                            margin-top:8px;
+                            margin-bottom:16px;
+                            padding:12px;
+                            border:1px solid #cbd5e1;
+                            border-radius:8px;
+                        "
+                    >
+
+                    <label>
+                        <strong>Trial API Key</strong>
+                    </label>
+
+                    <input
+                        type="text"
+                        name="api_key"
+                        value="<?= esc(old('api_key')) ?>"
+                        required
+                        autocomplete="off"
+                        style="
+                            width:100%;
+                            box-sizing:border-box;
+                            margin-top:8px;
+                            padding:12px;
+                            border:1px solid #cbd5e1;
+                            border-radius:8px;
+                        "
+                    >
+                </div>
+
+                <div class="actions">
 
                     <button
                         type="submit"
                         class="btn btn-primary"
                     >
-                        Mulai Instalasi
+                        Mulai Instalasi Trial
                     </button>
-                </form>
 
-                <a
-                    class="btn btn-secondary"
-                    href="<?= base_url('/') ?>"
-                >
-                    Batal
-                </a>
-            </div>
+                    <a
+                        class="btn btn-secondary"
+                        href="<?= base_url('/') ?>"
+                    >
+                        Batal
+                    </a>
+
+                </div>
+            </form>
 
         <?php endif; ?>
 
