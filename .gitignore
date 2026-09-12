@@ -81,3 +81,19 @@ Thumbs.db
 
 .idea/
 .vscode/
+
+
+# ==================================================
+# MASTER-04 RUNTIME ARTIFACT POLICY
+# ==================================================
+
+# Development source backup artifacts
+/writable/admin-user-backup-*/
+
+# Generated QR archives
+/writable/qrcodes/*
+!/writable/qrcodes/.gitkeep
+
+# Writable runtime upload data
+/writable/uploads/*
+!/writable/uploads/.gitkeep
