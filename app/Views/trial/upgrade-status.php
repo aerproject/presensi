@@ -218,11 +218,11 @@
 
             <div class="status-item">
                 <div class="label">
-                    Server UUID
+                    Installation UUID
                 </div>
 
                 <div class="value">
-                    <?= esc($serverUuid ?: '-') ?>
+                    <?= esc($installationUuid ?: '-') ?>
                 </div>
             </div>
 

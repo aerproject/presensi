@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Libraries\License;
 
+use App\Libraries\Installer\InstallationIdentity;
 use App\Models\LicenseRuntimeModel;
+use RuntimeException;
 
 final class ServerIdentity
 {
@@ -13,186 +15,269 @@ final class ServerIdentity
     public function __construct(
         ?LicenseRuntimeModel $runtime = null
     ) {
-        $this->runtime = $runtime ?? new LicenseRuntimeModel();
+        $this->runtime = $runtime
+            ?? new LicenseRuntimeModel();
     }
 
     /**
-     * Return stable installation identity.
+     * Return stable UUID for this application installation.
      *
-     * server_uuid is generated exactly once and persisted
-     * in license_runtime.id = 1.
+     * IMPORTANT:
+     *
+     * server_uuid identifies one PRESENSI installation,
+     * NOT the physical/virtual host machine.
+     *
+     * This allows multiple PRESENSI installations to run
+     * independently on the same server.
+     *
+     * UUID is generated once and persisted in
+     * license_runtime.id = 1.
      */
     public function serverUuid(): string
     {
-        $row = $this->runtime->ensureRuntime();
+        /*
+         * InstallationIdentity is the canonical
+         * identity source for this PRESENSI installation.
+         *
+         * The UUID is persisted outside the database,
+         * so it remains stable even when license_runtime
+         * is recreated or restored.
+         */
+        $installationIdentity =
+            new InstallationIdentity();
+
+        $installationUuid =
+            $installationIdentity->uuid();
 
         /*
-        |--------------------------------------------------------------------------
-        | Existing Canonical Identity
-        |--------------------------------------------------------------------------
-        |
-        | Once an AER server identity has been persisted, it is immutable.
-        | This prevents application reinstall or configuration changes from
-        | generating a different identity.
-        |
-        */
-        $existing = trim(
-            (string) ($row['server_uuid'] ?? '')
-        );
+         * Keep license_runtime.server_uuid synchronized
+         * for backward compatibility with the existing
+         * LicenseService, validation, heartbeat,
+         * renewal and admin components.
+         */
+        $runtime = $this->runtime->ensureRuntime();
 
-        if ($existing !== '') {
-            return $existing;
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Canonical Machine Identity
-        |--------------------------------------------------------------------------
-        |
-        | AER server_uuid represents the physical/virtual server host,
-        | not the application installation.
-        |
-        | /etc/machine-id survives application uninstall/reinstall and is
-        | readable by the PHP-FPM user.
-        |
-        */
-        $machineIdPath = '/etc/machine-id';
-
-        $machineId = trim(
-            (string) @file_get_contents($machineIdPath)
+        $currentServerUuid = trim(
+            (string) (
+                $runtime['server_uuid'] ?? ''
+            )
         );
 
         if (
-            $machineId === ''
-            || ! preg_match(
-                '/^[a-f0-9]{32}$/i',
-                $machineId
+            !hash_equals(
+                strtolower($installationUuid),
+                strtolower($currentServerUuid)
             )
         ) {
-            throw new \RuntimeException(
-                'Canonical server identity could not be resolved.'
-            );
+            $updated = $this->runtime->updateRuntime([
+                'server_uuid' =>
+                    $installationUuid,
+
+                'app_version' =>
+                    $this->appVersion(),
+            ]);
+
+            if (!$updated) {
+                throw new RuntimeException(
+                    'Unable to synchronize Installation UUID.'
+                );
+            }
         }
 
-        $machineId = strtolower($machineId);
-
-        $this->runtime->updateRuntime([
-            'server_uuid' => $machineId,
-            'app_version' => (string) env(
-                'LICENSE_APP_VERSION',
-                '1.0.0'
-            ),
-        ]);
-
-        return $machineId;
+        return $installationUuid;
     }
 
     /**
-     * Return canonical server identity payload.
+     * Return canonical identity payload for this
+     * PRESENSI installation.
+     *
+     * server_uuid:
+     *     Unique application installation identity.
+     *
+     * host_machine_id:
+     *     Physical/virtual host identity.
+     *
+     * installation_fingerprint:
+     *     Stable identity used by License Server to
+     *     detect Trial reuse.
      *
      * @return array<string,mixed>
      */
     public function get(): array
     {
+        $hostMachineId = $this->hostMachineId();
+
+        $domain = $this->domain();
+
+        $appCode = $this->appCode();
+
         return [
-            'server_uuid'  => $this->serverUuid(),
-            'hostname'     => php_uname('n'),
-            'domain'       => $this->domain(),
-            'ip_address'   => $this->ipAddress(),
-            'mac_address'  => $this->macAddress(),
-            'os_name'      => PHP_OS_FAMILY . ' ' . php_uname('r'),
-            'php_version'  => PHP_VERSION,
-            'app_version'  => (string) env(
-                'LICENSE_APP_VERSION',
-                '1.0.0'
-            ),
+            'server_uuid' => $this->serverUuid(),
+
+            'host_machine_id' => $hostMachineId,
+
+            'hostname' => php_uname('n'),
+
+            'domain' => $domain,
+
+            'ip_address' => $this->ipAddress(),
+
+            'mac_address' => $this->macAddress(),
+
+            'os_name' => PHP_OS_FAMILY
+                . ' '
+                . php_uname('r'),
+
+            'php_version' => PHP_VERSION,
+
+            'app_code' => $appCode,
+
+            'app_version' => $this->appVersion(),
+
+            'installation_fingerprint' =>
+                $this->installationFingerprint(
+                    $hostMachineId,
+                    $domain,
+                    $appCode
+                ),
         ];
     }
 
+    /**
+     * Return stable host machine identity.
+     *
+     * This identifies the physical or virtual machine.
+     *
+     * IMPORTANT:
+     * Multiple applications on the same host will have
+     * the same host_machine_id.
+     */
+    public function hostMachineId(): string
+    {
+        $machineIdPath = '/etc/machine-id';
+
+        $machineId = trim(
+            (string) @file_get_contents(
+                $machineIdPath
+            )
+        );
+
+        if (
+            $machineId === ''
+            || !preg_match(
+                '/^[a-f0-9]{32}$/i',
+                $machineId
+            )
+        ) {
+            throw new RuntimeException(
+                'Host machine identity could not be resolved.'
+            );
+        }
+
+        return strtolower($machineId);
+    }
 
     /**
-     * Return deterministic server identity fingerprint.
+     * Return deterministic installation fingerprint.
      *
-     * Read-only:
-     * - no runtime mutation
-     * - no database write
-     * - no network request
+     * The fingerprint intentionally includes:
+     *
+     * - host machine
+     * - application domain
+     * - application code
+     *
+     * Therefore:
+     *
+     * Same server + different domain
+     * = different installation fingerprint
+     *
+     * Same server + same domain
+     * = same installation fingerprint
+     *
+     * This allows the License Server to detect
+     * Trial reuse after reinstall.
      */
     public function fingerprint(): string
     {
-        $identity = $this->get();
+        return $this->installationFingerprint(
+            $this->hostMachineId(),
+            $this->domain(),
+            $this->appCode()
+        );
+    }
 
-        ksort($identity);
-
+    /**
+     * Build deterministic installation fingerprint.
+     */
+    private function installationFingerprint(
+        string $hostMachineId,
+        ?string $domain,
+        string $appCode
+    ): string {
         return hash(
             'sha256',
-            json_encode(
-                $identity,
-                JSON_UNESCAPED_SLASHES
-                | JSON_UNESCAPED_UNICODE
+            implode(
+                '|',
+                [
+                    strtolower(
+                        trim($hostMachineId)
+                    ),
+                    strtolower(
+                        trim((string) $domain)
+                    ),
+                    strtoupper(
+                        trim($appCode)
+                    ),
+                ]
             )
         );
     }
 
-
     /**
-     * Compare external identity payload with current server identity.
+     * Compare external installation identity with
+     * the current installation.
      *
-     * Read-only:
-     * - no runtime mutation
-     * - no database update
-     * - no network request
-     *
-     * @param array<string,mixed> $identity
+     * Primary comparison uses installation fingerprint.
      */
     public function compare(array $identity): bool
     {
-        $current = $this->get();
+        $externalFingerprint = trim(
+            (string) (
+                $identity['installation_fingerprint']
+                ?? ''
+            )
+        );
 
+        if ($externalFingerprint !== '') {
+            return hash_equals(
+                $this->fingerprint(),
+                $externalFingerprint
+            );
+        }
+
+        /*
+         * Backward compatibility.
+         *
+         * Older License Server payloads may only contain
+         * server_uuid.
+         */
         return hash_equals(
-            (string) ($current['server_uuid'] ?? ''),
-            (string) ($identity['server_uuid'] ?? '')
+            $this->serverUuid(),
+            (string) (
+                $identity['server_uuid']
+                ?? ''
+            )
         );
     }
 
     /**
      * Return identity integrity status.
      *
-     * Read-only evaluation.
-     *
      * @return array<string,mixed>
      */
-
-    /**
-     * Return identity audit metadata.
-     *
-     * Read-only audit representation.
-     *
-     * @return array<string,mixed>
-     */
-    public function audit(): array
-    {
-        $identity = $this->get();
-
-        $fingerprint = $this->fingerprint();
-
-        $identity['fingerprint'] = $fingerprint;
-
-        $integrity = $this->integrity($identity);
-
-        return [
-            'server_uuid' => $identity['server_uuid'] ?? null,
-            'fingerprint' => $fingerprint,
-            'status' => $integrity['status'] ?? 'unavailable',
-            'risk_level' => $integrity['risk_level'] ?? 'high',
-            'checked_at' => date('Y-m-d H:i:s'),
-        ];
-    }
-
-    public function integrity(?array $identity = null): array
-    {
-        $current = $this->get();
-
+    public function integrity(
+        ?array $identity = null
+    ): array {
         if (!is_array($identity)) {
             return [
                 'status' => 'unavailable',
@@ -200,91 +285,143 @@ final class ServerIdentity
             ];
         }
 
-        $uuidMatch = hash_equals(
-            (string) ($current['server_uuid'] ?? ''),
-            (string) ($identity['server_uuid'] ?? '')
-        );
+        $uuidMatch = false;
 
         $fingerprintMatch = false;
 
-        if (
-            isset($identity['fingerprint'])
-            && is_string($identity['fingerprint'])
-        ) {
-            $fingerprintMatch = hash_equals(
-                $this->fingerprint(),
-                $identity['fingerprint']
+        $externalUuid = trim(
+            (string) (
+                $identity['server_uuid']
+                ?? ''
+            )
+        );
+
+        if ($externalUuid !== '') {
+            $uuidMatch = hash_equals(
+                $this->serverUuid(),
+                $externalUuid
             );
         }
 
-        if (!$uuidMatch) {
+        $externalFingerprint = trim(
+            (string) (
+                $identity['installation_fingerprint']
+                ?? ''
+            )
+        );
+
+        if ($externalFingerprint !== '') {
+            $fingerprintMatch = hash_equals(
+                $this->fingerprint(),
+                $externalFingerprint
+            );
+        }
+
+        if (
+            !$uuidMatch
+            && !$fingerprintMatch
+        ) {
             return [
                 'status' => 'mismatch',
                 'risk_level' => 'high',
                 'uuid_match' => false,
-                'fingerprint_match' => $fingerprintMatch,
+                'fingerprint_match' => false,
             ];
         }
 
         if (
-            isset($identity['fingerprint'])
-            && !$fingerprintMatch
+            $fingerprintMatch
+            && !$uuidMatch
         ) {
             return [
                 'status' => 'warning',
                 'risk_level' => 'medium',
-                'uuid_match' => true,
-                'fingerprint_match' => false,
+                'uuid_match' => false,
+                'fingerprint_match' => true,
             ];
         }
 
         return [
             'status' => 'verified',
             'risk_level' => 'low',
-            'uuid_match' => true,
-            'fingerprint_match' => true,
+            'uuid_match' => $uuidMatch,
+            'fingerprint_match' => $fingerprintMatch,
         ];
     }
 
-    private function generateUuidV4(): string
+    /**
+     * Return identity audit metadata.
+     *
+     * @return array<string,mixed>
+     */
+    public function audit(): array
     {
-        $data = random_bytes(16);
+        $identity = $this->get();
 
-        $data[6] = chr(
-            (ord($data[6]) & 0x0f) | 0x40
-        );
+        return [
+            'server_uuid' =>
+                $identity['server_uuid'] ?? null,
 
-        $data[8] = chr(
-            (ord($data[8]) & 0x3f) | 0x80
-        );
+            'host_machine_id' =>
+                $identity['host_machine_id'] ?? null,
 
-        return vsprintf(
-            '%s%s-%s-%s-%s-%s%s%s',
-            str_split(bin2hex($data), 4)
-        );
+            'domain' =>
+                $identity['domain'] ?? null,
+
+            'installation_fingerprint' =>
+                $identity[
+                    'installation_fingerprint'
+                ] ?? null,
+
+            'status' => 'available',
+
+            'checked_at' =>
+                date('Y-m-d H:i:s'),
+        ];
     }
 
+
+    /**
+     * Return application domain.
+     */
     private function domain(): ?string
     {
         $baseUrl = trim(
-            (string) env('app.baseURL', '')
+            (string) env(
+                'app.baseURL',
+                ''
+            )
         );
 
         if ($baseUrl === '') {
             return null;
         }
 
-        $host = parse_url($baseUrl, PHP_URL_HOST);
+        $host = parse_url(
+            $baseUrl,
+            PHP_URL_HOST
+        );
 
-        return $host !== false && $host !== null
-            ? (string) $host
+        return (
+            $host !== false
+            && $host !== null
+        )
+            ? strtolower(
+                (string) $host
+            )
             : null;
     }
 
+    /**
+     * Return configured server IP when available.
+     */
     private function ipAddress(): ?string
     {
         $configured = trim(
-            (string) env('LICENSE_SERVER_IP', '')
+            (string) env(
+                'LICENSE_SERVER_IP',
+                ''
+            )
         );
 
         return $configured !== ''
@@ -292,33 +429,74 @@ final class ServerIdentity
             : null;
     }
 
+    /**
+     * Return first available network MAC address.
+     */
     private function macAddress(): ?string
     {
-        $interfaces = @glob('/sys/class/net/*/address');
+        $interfaces = @glob(
+            '/sys/class/net/*/address'
+        );
 
         if (!is_array($interfaces)) {
             return null;
         }
 
         foreach ($interfaces as $file) {
-            $interface = basename(dirname($file));
+
+            $interface = basename(
+                dirname($file)
+            );
 
             if ($interface === 'lo') {
                 continue;
             }
 
             $mac = strtolower(
-                trim((string) @file_get_contents($file))
+                trim(
+                    (string) @file_get_contents(
+                        $file
+                    )
+                )
             );
 
             if (
                 $mac !== ''
-                && $mac !== '00:00:00:00:00:00'
+                && $mac !==
+                    '00:00:00:00:00:00'
             ) {
                 return $mac;
             }
         }
 
         return null;
+    }
+
+    /**
+     * Return application code.
+     */
+    private function appCode(): string
+    {
+        return strtoupper(
+            trim(
+                (string) env(
+                    'LICENSE_APP_CODE',
+                    'PRESENSI'
+                )
+            )
+        );
+    }
+
+    /**
+     * Return application version.
+     */
+    private function appVersion(): string
+    {
+        return trim(
+            (string) env(
+                'LICENSE_APP_VERSION',
+                '1.0.0'
+            )
+        );
     }
 }

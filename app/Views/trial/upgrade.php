@@ -153,7 +153,7 @@
         <?php endif; ?>
 
         <div class="info">
-            Server UUID yang sudah terdaftar akan dipertahankan.
+            Installation UUID yang sudah terdaftar akan dipertahankan.
             Upgrade ini tidak membuat Server Identity baru.
         </div>
 

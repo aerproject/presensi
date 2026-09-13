@@ -214,14 +214,22 @@
             <h1>Instalasi Aplikasi</h1>
 
             <div class="info">
-                Server belum memiliki Server UUID terdaftar.
-                Instalasi Menggunakan Lisensi Trial dapat dilanjutkan.
+                Aplikasi belum memiliki Lisensi Trial aktif.
+                Instalasi Trial dapat dilanjutkan menggunakan
+                Installation UUID aplikasi ini.
+            </div>
+
+            <div class="info">
+                <strong>Installation UUID</strong>
+                <br>
+                <?= esc($installationUuid ?: '-') ?>
             </div>
 
             <p>
-                Proses selanjutnya akan memvalidasi Trial
-                License Key dan Trial API Key ke License Server
-                sebelum melakukan activation.
+                Klik tombol Mulai Instalasi Trial untuk
+                mengirim Installation UUID ke License Server.
+                Trial License dan credential akan diproses
+                secara otomatis oleh sistem.
             </p>
 
             <form
@@ -229,49 +237,6 @@
                 action="<?= base_url('/trial/install/bootstrap') ?>"
             >
                 <?= csrf_field() ?>
-
-                <div class="info">
-                    <label>
-                        <strong>Trial License Key</strong>
-                    </label>
-
-                    <input
-                        type="text"
-                        name="license_key"
-                        value="<?= esc(old('license_key')) ?>"
-                        required
-                        autocomplete="off"
-                        style="
-                            width:100%;
-                            box-sizing:border-box;
-                            margin-top:8px;
-                            margin-bottom:16px;
-                            padding:12px;
-                            border:1px solid #cbd5e1;
-                            border-radius:8px;
-                        "
-                    >
-
-                    <label>
-                        <strong>Trial API Key</strong>
-                    </label>
-
-                    <input
-                        type="text"
-                        name="api_key"
-                        value="<?= esc(old('api_key')) ?>"
-                        required
-                        autocomplete="off"
-                        style="
-                            width:100%;
-                            box-sizing:border-box;
-                            margin-top:8px;
-                            padding:12px;
-                            border:1px solid #cbd5e1;
-                            border-radius:8px;
-                        "
-                    >
-                </div>
 
                 <div class="actions">
 

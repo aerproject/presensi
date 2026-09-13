@@ -97,3 +97,12 @@ Thumbs.db
 # Writable runtime upload data
 /writable/uploads/*
 !/writable/uploads/.gitkeep
+
+# Local installation identity
+# Generated uniquely for each PRESENSI installation.
+# Must never be committed to Git.
+
+# Local installation identity
+# Generated uniquely for each PRESENSI installation.
+# Must never be committed to Git.
+/writable/installation/installation_uuid

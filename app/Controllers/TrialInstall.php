@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controllers;
 
+use App\Libraries\Installer\InstallationIdentity;
 use App\Libraries\License\TrialReinstallGuard;
 use App\Libraries\License\ServerIdentity;
 use App\Libraries\License\LicenseService;
@@ -24,6 +25,20 @@ final class TrialInstall extends BaseController
         );
     }
 
+    /**
+     * Return canonical identity for this
+     * PRESENSI application installation.
+     *
+     * Trial identity MUST use InstallationIdentity,
+     * not physical server identity.
+     */
+    private function installationUuid(): string
+    {
+        return (
+            new InstallationIdentity()
+        )->uuid();
+    }
+
     public function index(): string
     {
         $guard = $this->guard();
@@ -32,26 +47,46 @@ final class TrialInstall extends BaseController
 
         $row = $runtime->getRuntime();
 
-        $credentialStore = new LicenseCredentialStore(
-            $runtime,
-            new LicenseCrypto()
-        );
+        $credentialStore =
+            new LicenseCredentialStore(
+                $runtime,
+                new LicenseCrypto()
+            );
 
-        $serverUuid = trim(
-            (string) ($row['server_uuid'] ?? '')
-        );
+        /*
+         * Canonical Trial identity.
+         *
+         * This UUID belongs to one PRESENSI
+         * installation and is persisted outside
+         * the application database.
+         */
+        $installationUuid =
+            $this->installationUuid();
 
         return view('trial/install', [
-            'allowed' => $guard->isAllowed(),
-            'reason' => $guard->reason(),
-            'notice' => $guard->notice(),
+            'allowed' =>
+                $guard->isAllowed(),
 
-            'serverUuidExists' => $serverUuid !== '',
+            'reason' =>
+                $guard->reason(),
+
+            'notice' =>
+                $guard->notice(),
+
+            /*
+             * New canonical Trial identity.
+             */
+            'installationUuid' =>
+                $installationUuid,
+
+            'installationUuidExists' =>
+                $installationUuid !== '',
 
             'credentialReady' =>
                 $credentialStore->has(),
 
-            'runtime' => $row,
+            'runtime' =>
+                $row,
         ]);
     }
 
@@ -69,9 +104,27 @@ final class TrialInstall extends BaseController
     }
 
     /**
+     * Existing Full installation terminal page.
+     *
+     * Installation UUID already belongs to a Full license.
+     * Trial installation and upgrade must not continue.
+     */
+    public function existingFull(): string
+    {
+        $installationUuid = $this->installationUuid();
+
+        return view(
+            'trial/existing-full',
+            [
+                'installationUuid' => $installationUuid,
+            ]
+        );
+    }
+
+    /**
      * Full upgrade entry point.
      *
-     * Existing Server UUID is intentionally preserved.
+     * Existing Installation UUID is intentionally preserved.
      * No new identity is generated here.
      */
     public function upgrade(): string
@@ -79,9 +132,8 @@ final class TrialInstall extends BaseController
         $runtime = new LicenseRuntimeModel();
         $row = $runtime->getRuntime();
 
-        $serverUuid = trim(
-            (string) ($row['server_uuid'] ?? '')
-        );
+        $installationUuid =
+            $this->installationUuid();
 
         $credentialStore = new LicenseCredentialStore(
             $runtime,
@@ -108,8 +160,8 @@ final class TrialInstall extends BaseController
             && $validateStatus === 'valid';
 
         return view('trial/upgrade', [
-            'serverUuid' => $serverUuid,
-            'serverUuidExists' => $serverUuid !== '',
+            'installationUuid' => $installationUuid,
+            'installationUuidExists' => $installationUuid !== '',
             'credentialReady' => $credentialReady,
             'licenseType' => $licenseType,
             'activateStatus' => $activateStatus,
@@ -127,9 +179,8 @@ final class TrialInstall extends BaseController
         $runtime = new LicenseRuntimeModel();
         $row = $runtime->getRuntime();
 
-        $serverUuid = trim(
-            (string) ($row['server_uuid'] ?? '')
-        );
+        $installationUuid =
+            $this->installationUuid();
 
         $licenseType = strtolower(
             trim((string) ($row['license_type'] ?? ''))
@@ -153,7 +204,7 @@ final class TrialInstall extends BaseController
         }
 
         return view('trial/upgrade-process', [
-            'serverUuid' => $serverUuid,
+            'installationUuid' => $installationUuid,
             'licenseType' => strtolower(
                 trim((string) ($row['license_type'] ?? ''))
             ),
@@ -175,12 +226,11 @@ final class TrialInstall extends BaseController
         $runtime = new LicenseRuntimeModel();
         $row = $runtime->getRuntime();
 
-        $serverUuid = trim(
-            (string) ($row['server_uuid'] ?? '')
-        );
+        $installationUuid =
+            $this->installationUuid();
 
         return view('trial/upgrade-status', [
-            'serverUuid' => $serverUuid,
+            'installationUuid' => $installationUuid,
             'licenseType' => strtolower(
                 trim((string) ($row['license_type'] ?? ''))
             ),
@@ -205,16 +255,15 @@ final class TrialInstall extends BaseController
         $runtime = new LicenseRuntimeModel();
         $row = $runtime->getRuntime();
 
-        $serverUuid = trim(
-            (string) ($row['server_uuid'] ?? '')
-        );
+        $installationUuid =
+            $this->installationUuid();
 
-        if ($serverUuid === '') {
+        if ($installationUuid === '') {
             return redirect()
                 ->to('/trial/upgrade')
                 ->with(
                     'error',
-                    'Upgrade Full hanya dapat dilakukan pada server yang sudah memiliki Server UUID.'
+                    'Upgrade Full hanya dapat dilakukan pada instalasi yang sudah memiliki Installation UUID.'
                 );
         }
 
@@ -272,16 +321,15 @@ final class TrialInstall extends BaseController
         $runtime = new LicenseRuntimeModel();
         $row = $runtime->getRuntime();
 
-        $serverUuid = trim(
-            (string) ($row['server_uuid'] ?? '')
-        );
+        $installationUuid =
+            $this->installationUuid();
 
-        if ($serverUuid === '') {
+        if ($installationUuid === '') {
             return redirect()
                 ->to('/trial/upgrade')
                 ->with(
                     'error',
-                    'Upgrade Full hanya dapat dilakukan pada server yang sudah memiliki Server UUID.'
+                    'Upgrade Full hanya dapat dilakukan pada instalasi yang sudah memiliki Installation UUID.'
                 );
         }
 
@@ -380,16 +428,15 @@ final class TrialInstall extends BaseController
                 );
         }
 
-        $serverUuid = trim(
-            (string) ($row['server_uuid'] ?? '')
-        );
+        $installationUuid =
+            $this->installationUuid();
 
-        if ($serverUuid === '') {
+        if ($installationUuid === '') {
             return redirect()
                 ->to('/trial/upgrade')
                 ->with(
                     'error',
-                    'Server UUID belum tersedia.'
+                    'Installation UUID belum tersedia.'
                 );
         }
 
@@ -482,6 +529,24 @@ final class TrialInstall extends BaseController
      * License key and API key come only from installer form.
      * API secret is returned by License Server and stored encrypted.
      */
+    /**
+     * Request and activate Trial License automatically.
+     *
+     * No Trial License Key or API Key is entered
+     * manually by the installer.
+     *
+     * Flow:
+     *
+     * 1. Check local installation guard.
+     * 2. Generate/read Installation UUID.
+     * 3. Request Trial License automatically.
+     * 4. License Server checks Installation UUID.
+     * 5. Receive Trial credential.
+     * 6. Store encrypted credential.
+     * 7. Store Trial License Key.
+     * 8. Activate Trial.
+     * 9. Validate Trial.
+     */
     public function bootstrapTrial(): ResponseInterface
     {
         $guard = $this->guard();
@@ -496,56 +561,173 @@ final class TrialInstall extends BaseController
                 );
         }
 
-        $licenseKey = strtoupper(
-            trim(
-                (string) $this->request->getPost('license_key')
-            )
-        );
-
-        $apiKey = trim(
-            (string) $this->request->getPost('api_key')
-        );
-
-        if ($licenseKey === '') {
-            return redirect()
-                ->to('/trial/install')
-                ->withInput()
-                ->with(
-                    'error',
-                    'Trial License Key wajib diisi.'
-                );
-        }
-
-        if ($apiKey === '') {
-            return redirect()
-                ->to('/trial/install')
-                ->withInput()
-                ->with(
-                    'error',
-                    'Trial API Key wajib diisi.'
-                );
-        }
-
         try {
-            $client = new TrialBootstrapClient();
 
-            $credential = $client->bootstrap(
-                $licenseKey,
-                $apiKey
+            log_message(
+                'info',
+                'TRIAL_INSTALL_REQUEST_ENTERED'
             );
 
+            /*
+             * Request Trial License automatically.
+             *
+             * Installation UUID is handled internally
+             * by TrialBootstrapClient.
+             */
+            $client = new TrialBootstrapClient();
+
+            $credential = $client->requestTrial();
+
+            /*
+             * License Server decision.
+             *
+             * NEW_TRIAL
+             * → continue automatic installation.
+             *
+             * EXISTING_TRIAL
+             * → installation already has Trial.
+             *
+             * EXISTING_FULL
+             * → installation already has Full.
+             */
+            $responseState = strtoupper(
+                trim(
+                    (string) (
+                        $credential['response_state']
+                        ?? ''
+                    )
+                )
+            );
+
+            if (
+                $responseState ===
+                TrialBootstrapClient::RESPONSE_EXISTING_TRIAL
+            ) {
+                return redirect()
+                    ->to('/trial/upgrade')
+                    ->with(
+                        'error',
+                        (string) (
+                            $credential['message']
+                            ?? 'Installation UUID ini sudah memiliki '
+                            . 'lisensi Trial. Silakan Upgrade ke Full '
+                            . 'atau hentikan instalasi.'
+                        )
+                    );
+            }
+
+            if (
+                $responseState ===
+                TrialBootstrapClient::RESPONSE_EXISTING_FULL
+            ) {
+                return redirect()
+                    ->to('/trial/install/full-exists')
+                    ->with(
+                        'error',
+                        (string) (
+                            $credential['message']
+                            ?? 'Installation UUID ini sudah pernah '
+                            . 'terdaftar menggunakan lisensi Full. '
+                            . 'Proses instalasi dihentikan.'
+                        )
+                    );
+            }
+
+            if (
+                $responseState !==
+                TrialBootstrapClient::RESPONSE_NEW_TRIAL
+            ) {
+                throw new \RuntimeException(
+                    'License Server mengembalikan '
+                    . 'status instalasi tidak dikenal.'
+                );
+            }
+
+            /*
+             * NEW_TRIAL.
+             *
+             * Continue automatic Trial installation.
+             */
+            $licenseKey = strtoupper(
+                trim(
+                    (string) (
+                        $credential['license_key']
+                        ?? ''
+                    )
+                )
+            );
+
+            $apiKey = trim(
+                (string) (
+                    $credential['api_key']
+                    ?? ''
+                )
+            );
+
+            $apiSecret = trim(
+                (string) (
+                    $credential['api_secret']
+                    ?? ''
+                )
+            );
+
+            $licenseType = strtolower(
+                trim(
+                    (string) (
+                        $credential['license_type']
+                        ?? ''
+                    )
+                )
+            );
+
+            /*
+             * Validate Trial response.
+             */
+            if ($licenseKey === '') {
+                throw new \RuntimeException(
+                    'License Server tidak mengembalikan Trial License Key.'
+                );
+            }
+
+            if ($apiKey === '') {
+                throw new \RuntimeException(
+                    'License Server tidak mengembalikan API Key.'
+                );
+            }
+
+            if ($apiSecret === '') {
+                throw new \RuntimeException(
+                    'License Server tidak mengembalikan API Secret.'
+                );
+            }
+
+            if ($licenseType !== 'trial') {
+                throw new \RuntimeException(
+                    'License Server tidak mengembalikan lisensi Trial.'
+                );
+            }
+
+            /*
+             * Local license runtime.
+             */
             $runtime = new LicenseRuntimeModel();
 
+            /*
+             * Store API credential encrypted.
+             */
             $store = new LicenseCredentialStore(
                 $runtime,
                 new LicenseCrypto()
             );
 
             $store->store(
-                $credential['api_key'],
-                $credential['api_secret']
+                $apiKey,
+                $apiSecret
             );
 
+            /*
+             * Store Trial License Key locally.
+             */
             $service = new LicenseService(
                 runtime: $runtime
             );
@@ -554,6 +736,9 @@ final class TrialInstall extends BaseController
                 $licenseKey
             );
 
+            /*
+             * Activate Trial.
+             */
             $result = $service->activate(
                 $licenseKey
             );
@@ -564,21 +749,53 @@ final class TrialInstall extends BaseController
                 ($result['success'] ?? false) !== true
             ) {
                 throw new \RuntimeException(
-                    'Trial activation failed.'
+                    (string) (
+                        $result['message']
+                        ?? 'Aktivasi Trial gagal.'
+                    )
                 );
             }
+
+            /*
+             * Validate Trial after activation.
+             */
+            $validateResult = $service->validate();
+
+            if (
+                !is_array($validateResult)
+                ||
+                ($validateResult['success'] ?? false) !== true
+            ) {
+                throw new \RuntimeException(
+                    (string) (
+                        $validateResult['message']
+                        ?? 'Validasi Trial gagal.'
+                    )
+                );
+            }
+
+            log_message(
+                'info',
+                'TRIAL_INSTALL_COMPLETED'
+            );
 
             return redirect()
                 ->to('/auth/login')
                 ->with(
                     'success',
-                    'Trial berhasil diaktifkan. Silakan login.'
+                    'Lisensi Trial berhasil diperoleh dan diaktifkan. Silakan login.'
                 );
 
         } catch (\Throwable $e) {
+
+            log_message(
+                'error',
+                'TRIAL_INSTALL_ERROR='
+                . $e->getMessage()
+            );
+
             return redirect()
                 ->to('/trial/install')
-                ->withInput()
                 ->with(
                     'error',
                     $e->getMessage()
@@ -678,16 +895,15 @@ final class TrialInstall extends BaseController
                 );
         }
 
-        $serverUuid = trim(
-            (string) ($row['server_uuid'] ?? '')
-        );
+        $installationUuid =
+            $this->installationUuid();
 
-        if ($serverUuid === '') {
+        if ($installationUuid === '') {
             return redirect()
                 ->to('/trial/install')
                 ->with(
                     'error',
-                    'Server UUID belum tersedia.'
+                    'Installation UUID belum tersedia.'
                 );
         }
 

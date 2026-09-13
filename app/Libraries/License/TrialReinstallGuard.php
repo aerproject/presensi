@@ -4,55 +4,57 @@ declare(strict_types=1);
 
 namespace App\Libraries\License;
 
-use App\Models\LicenseRuntimeModel;
-
+/**
+ * Local Trial installation guard.
+ *
+ * IMPORTANT:
+ *
+ * License ownership and Installation UUID registration
+ * are decided by the License Server through
+ * TrialBootstrapClient.
+ *
+ * The License Server returns one of:
+ *
+ * NEW_TRIAL
+ * EXISTING_TRIAL
+ * EXISTING_FULL
+ *
+ * This guard MUST NOT use local runtime identity
+ * as the canonical installation identity source.
+ */
 final class TrialReinstallGuard
 {
-    public const REASON_SERVER_ALREADY_REGISTERED =
-        'SERVER_ALREADY_REGISTERED';
-
-    public function __construct(
-        private readonly LicenseRuntimeModel $runtime
-    ) {
-    }
-
     /**
-     * Trial is allowed only when this installation
-     * has no persisted Server UUID yet.
+     * Trial request may proceed to License Server.
      *
-     * This guard is intentionally for Trial installation only.
-     * Full upgrade is not blocked by this class.
+     * Final decision is made remotely based on the
+     * canonical Installation UUID.
      */
     public function isAllowed(): bool
     {
-        $row = $this->runtime->getRuntime();
-
-        if (!is_array($row)) {
-            return true;
-        }
-
-        return trim(
-            (string) ($row['server_uuid'] ?? '')
-        ) === '';
+        return true;
     }
 
+    /**
+     * No local blocking reason.
+     *
+     * License Server provides the authoritative
+     * installation decision.
+     */
     public function reason(): ?string
     {
-        return $this->isAllowed()
-            ? null
-            : self::REASON_SERVER_ALREADY_REGISTERED;
+        return null;
     }
 
+    /**
+     * No local blocking notice.
+     *
+     * Remote License Server response determines
+     * whether installation continues, upgrades,
+     * or is stopped.
+     */
     public function notice(): ?string
     {
-        if ($this->isAllowed()) {
-            return null;
-        }
-
-        return
-            'Instalasi Trial tidak dapat digunakan pada server ini '
-            . 'karena Server UUID sudah terdaftar. '
-            . 'Untuk melanjutkan instalasi pada server yang sama, '
-            . 'silakan upgrade lisensi ke Full.';
+        return null;
     }
 }

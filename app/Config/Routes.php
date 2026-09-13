@@ -8,6 +8,7 @@ use CodeIgniter\Router\RouteCollection;
 
 $routes->get('/', 'Home::index');
 $routes->get('trial/install', 'TrialInstall::index');
+$routes->get('trial/install/full-exists', 'TrialInstall::existingFull');
 $routes->post('trial/install', 'TrialInstall::start');
 $routes->post('trial/install/stop', 'TrialInstall::stop');
 

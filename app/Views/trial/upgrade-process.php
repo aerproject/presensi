@@ -146,8 +146,8 @@
         </p>
 
         <div class="info">
-            Server UUID:
-            <strong><?= esc($serverUuid ?: '-') ?></strong>
+            Installation UUID:
+            <strong><?= esc($installationUuid ?: '-') ?></strong>
         </div>
 
         <div class="step done">
