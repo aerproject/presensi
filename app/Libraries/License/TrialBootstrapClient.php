@@ -124,7 +124,7 @@ final class TrialBootstrapClient
 
             $response = $client->request(
                 'POST',
-                'api/v1/trial/request',
+                'api/v1/trial/claim',
                 [
                     'headers' => [
                         'Content-Type' =>
