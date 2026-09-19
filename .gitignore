@@ -106,3 +106,12 @@ Thumbs.db
 # Generated uniquely for each PRESENSI installation.
 # Must never be committed to Git.
 /writable/installation/installation_uuid
+
+# ==================================================
+# ACME / SSL Challenge Runtime
+# ==================================================
+
+/.well-known/acme-challenge/*
+!/.well-known/acme-challenge/.gitkeep
+/public/.well-known/acme-challenge/*
+!/public/.well-known/acme-challenge/.gitkeep

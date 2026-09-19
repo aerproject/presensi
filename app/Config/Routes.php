@@ -8,13 +8,36 @@ use CodeIgniter\Router\RouteCollection;
 
 $routes->get('/', 'Home::index');
 $routes->get('trial/install', 'TrialInstall::index');
+$routes->get('trial/install/uuid', 'TrialInstall::uuidCheck');
 $routes->get('trial/install/full-exists', 'TrialInstall::existingFull');
 $routes->post('trial/install', 'TrialInstall::start');
 $routes->post('trial/install/stop', 'TrialInstall::stop');
+$routes->match(['get', 'post'], 'trial/install/database', 'TrialInstall::database');
+
+$routes->match(
+    ['get', 'post'],
+    'trial/install/config',
+    'TrialInstall::configuration'
+);
+
+$routes->post(
+    'trial/install/config/process',
+    'TrialInstall::processConfiguration'
+);
 
 $routes->post(
     'trial/install/bootstrap',
     'TrialInstall::bootstrapTrial'
+);
+
+$routes->get(
+    'trial/install/admin',
+    'TrialInstall::admin'
+);
+
+$routes->post(
+    'trial/install/finalize',
+    'TrialInstall::finalizeAdmin'
 );
 
 $routes->post(

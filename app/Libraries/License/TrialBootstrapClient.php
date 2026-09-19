@@ -74,6 +74,170 @@ final class TrialBootstrapClient
      * application installation is eligible
      * for a Trial License.
      */
+    /**
+     * Read-only Trial installation decision.
+     *
+     * Does NOT claim or create a Trial License.
+     *
+     * Returns:
+     * - NEW_TRIAL
+     * - EXISTING_TRIAL
+     * - EXISTING_FULL
+     */
+    public function requestTrialDecision(): array
+    {
+        $installationUuid = $this->identity->uuid();
+
+        if ($installationUuid === '') {
+            throw new RuntimeException(
+                'Installation UUID is required.'
+            );
+        }
+
+        $client = service(
+            'curlrequest',
+            [
+                'baseURI' =>
+                    rtrim(
+                        (string) $this->config->baseUrl,
+                        '/'
+                    ) . '/',
+
+                'timeout' =>
+                    $this->config->timeout,
+            ]
+        );
+
+        $payload = [
+            'installation_uuid' =>
+                $installationUuid,
+
+            'app_version' =>
+                $this->config->appVersion,
+        ];
+
+        $timestamp = (string) time();
+        $nonce = $this->generateNonce();
+
+        try {
+            $response = $client->request(
+                'POST',
+                'api/v1/trial/check',
+                [
+                    'headers' => [
+                        'Content-Type' =>
+                            'application/json',
+
+                        'Accept' =>
+                            'application/json',
+
+                        'X-Timestamp' =>
+                            $timestamp,
+
+                        'X-Nonce' =>
+                            $nonce,
+
+                        'X-App-Version' =>
+                            $this->config->appVersion,
+                    ],
+
+                    'body' => json_encode(
+                        $payload,
+                        JSON_UNESCAPED_SLASHES
+                        | JSON_UNESCAPED_UNICODE
+                        | JSON_THROW_ON_ERROR
+                    ),
+
+                    'http_errors' => false,
+                ]
+            );
+        } catch (\Throwable $e) {
+            throw new RuntimeException(
+                'Trial decision request failed: '
+                . $e->getMessage(),
+                0,
+                $e
+            );
+        }
+
+        $status = $response->getStatusCode();
+        $body = (string) $response->getBody();
+
+        $decoded = json_decode(
+            $body,
+            true
+        );
+
+        if (! is_array($decoded)) {
+            throw new RuntimeException(
+                'Invalid Trial decision response.'
+            );
+        }
+
+        if (
+            $status < 200 ||
+            $status >= 300
+        ) {
+            throw new RuntimeException(
+                (string) (
+                    $decoded['message']
+                    ?? 'Trial decision request rejected.'
+                )
+            );
+        }
+
+        if (
+            ($decoded['success'] ?? false)
+            !== true
+        ) {
+            throw new RuntimeException(
+                (string) (
+                    $decoded['message']
+                    ?? 'Trial decision request failed.'
+                )
+            );
+        }
+
+        $data = $decoded['data'] ?? null;
+
+        if (! is_array($data)) {
+            throw new RuntimeException(
+                'Trial decision response data is invalid.'
+            );
+        }
+
+        $state = strtoupper(
+            trim(
+                (string) (
+                    $data['install_status']
+                    ?? ''
+                )
+            )
+        );
+
+        if (
+            ! in_array(
+                $state,
+                [
+                    self::RESPONSE_NEW_TRIAL,
+                    self::RESPONSE_EXISTING_TRIAL,
+                    self::RESPONSE_EXISTING_FULL,
+                ],
+                true
+            )
+        ) {
+            throw new RuntimeException(
+                'Unknown Trial installation state.'
+            );
+        }
+
+        return [
+            'success' => true,
+            'install_status' => $state,
+            'data' => $data,
+        ];
+    }
+
     public function requestTrial(): array
     {
         $installationUuid = $this->identity->uuid();
@@ -116,9 +280,12 @@ final class TrialBootstrapClient
             'application_code' =>
                 $this->applicationCode(),
 
-            'application_version' =>
+            'app_version' =>
                 $this->config->appVersion,
         ];
+
+        $timestamp = (string) time();
+        $nonce = $this->generateNonce();
 
         try {
 
@@ -132,6 +299,15 @@ final class TrialBootstrapClient
 
                         'Accept' =>
                             'application/json',
+
+                        'X-Timestamp' =>
+                            $timestamp,
+
+                        'X-Nonce' =>
+                            $nonce,
+
+                        'X-App-Version' =>
+                            $this->config->appVersion,
                     ],
 
                     'body' => json_encode(
@@ -162,6 +338,12 @@ final class TrialBootstrapClient
 
         $raw = (string) $response->getBody();
 
+        log_message(
+            'info',
+            'TRIAL_SERVER_RESPONSE_RECEIVED status='
+            . $status
+        );
+
         $data = json_decode(
             $raw,
             true
@@ -171,7 +353,8 @@ final class TrialBootstrapClient
 
             log_message(
                 'error',
-                'TRIAL_REQUEST_NON_JSON=' . $raw
+                'TRIAL_REQUEST_NON_JSON status='
+                . $status
             );
 
             throw new RuntimeException(
@@ -248,7 +431,7 @@ final class TrialBootstrapClient
          */
         $responseState = trim(
             (string) (
-                $result['response_state']
+                $result['install_status']
                 ?? ''
             )
         );
@@ -380,6 +563,14 @@ final class TrialBootstrapClient
             )
         );
 
+        log_message(
+            'info',
+            'TRIAL_RESPONSE_VALIDATED status='
+            . ($result['status'] ?? 'unknown')
+            . ' license_type='
+            . ($result['license_type'] ?? 'unknown')
+        );
+
         if ($apiKey === '') {
 
             throw new RuntimeException(
@@ -479,6 +670,38 @@ final class TrialBootstrapClient
     public function installationUuid(): string
     {
         return $this->identity->uuid();
+    }
+
+    /**
+     * Generate request nonce.
+     */
+    private function sortRecursively(mixed $value): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        if (array_is_list($value)) {
+            return array_map(
+                fn (mixed $item): mixed =>
+                    $this->sortRecursively($item),
+                $value
+            );
+        }
+
+        foreach ($value as $key => $item) {
+            $value[$key] =
+                $this->sortRecursively($item);
+        }
+
+        ksort($value);
+
+        return $value;
+    }
+
+    private function generateNonce(): string
+    {
+        return bin2hex(random_bytes(24));
     }
 
     /**

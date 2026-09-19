@@ -25,7 +25,6 @@ abstract class BaseController extends Controller
     ) {
         parent::initController($request, $response, $logger);
 
-        $this->session = service('session');
 
         $this->db = \Config\Database::connect();   // TAMBAH INI
     }

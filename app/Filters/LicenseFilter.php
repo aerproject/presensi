@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filters;
 
+use App\Libraries\Installer\InstallationIdentity;
 use App\Models\LicenseRuntimeModel;
 use CodeIgniter\Filters\FilterInterface;
 use CodeIgniter\HTTP\RequestInterface;
@@ -94,25 +95,27 @@ final class LicenseFilter implements FilterInterface
          * Runtime enforcement must never mutate license_runtime.
          */
 
-        $machineId = strtolower(
-            trim((string) @file_get_contents('/etc/machine-id'))
+        /*
+         * Installation UUID is the primary license boundary.
+         * Physical/virtual host identity is metadata only.
+         */
+        $installationUuid = strtolower(
+            trim(
+                (string) (
+                    (new InstallationIdentity())->uuid()
+                )
+            )
         );
 
-        if (
-            $machineId === ''
-            || !preg_match(
-                '/^[a-f0-9]{32}$/',
-                $machineId
-            )
-        ) {
+        if ($installationUuid === '') {
             return $this->blocked(
-                'LICENSE_MACHINE_ID_UNAVAILABLE'
+                'LICENSE_INSTALLATION_UUID_UNAVAILABLE'
             );
         }
 
-        if (!hash_equals($storedUuid, $machineId)) {
+        if (!hash_equals($storedUuid, $installationUuid)) {
             return $this->blocked(
-                'LICENSE_MACHINE_MISMATCH'
+                'LICENSE_INSTALLATION_UUID_MISMATCH'
             );
         }
 

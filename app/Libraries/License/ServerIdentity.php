@@ -6,17 +6,24 @@ namespace App\Libraries\License;
 
 use App\Libraries\Installer\InstallationIdentity;
 use App\Models\LicenseRuntimeModel;
+use Config\License;
 use RuntimeException;
 
 final class ServerIdentity
 {
     private LicenseRuntimeModel $runtime;
 
+    private License $config;
+
     public function __construct(
-        ?LicenseRuntimeModel $runtime = null
+        ?LicenseRuntimeModel $runtime = null,
+        ?License $config = null
     ) {
         $this->runtime = $runtime
             ?? new LicenseRuntimeModel();
+
+        $this->config = $config
+            ?? config('License');
     }
 
     /**
@@ -105,7 +112,14 @@ final class ServerIdentity
      */
     public function get(): array
     {
-        $hostMachineId = $this->hostMachineId();
+        $hostMachineId = null;
+
+        try {
+            $hostMachineId = $this->hostMachineId();
+        } catch (RuntimeException) {
+            // Host machine identity is metadata only.
+            // Installation UUID remains the primary installation identity.
+        }
 
         $domain = $this->domain();
 
@@ -135,11 +149,13 @@ final class ServerIdentity
             'app_version' => $this->appVersion(),
 
             'installation_fingerprint' =>
-                $this->installationFingerprint(
-                    $hostMachineId,
-                    $domain,
-                    $appCode
-                ),
+                $hostMachineId !== null
+                    ? $this->installationFingerprint(
+                        $hostMachineId,
+                        $domain,
+                        $appCode
+                    )
+                    : null,
         ];
     }
 
@@ -488,15 +504,12 @@ final class ServerIdentity
     }
 
     /**
-     * Return application version.
+     * Return canonical application version.
+     *
+     * The version source is Config\License.
      */
     private function appVersion(): string
     {
-        return trim(
-            (string) env(
-                'LICENSE_APP_VERSION',
-                '1.0.0'
-            )
-        );
+        return $this->config->appVersion;
     }
 }

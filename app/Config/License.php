@@ -10,6 +10,7 @@ class License extends BaseConfig
 {
     public string $baseUrl;
     public string $apiKey;
+    public string $appCode;
     public string $apiSecret = '';
     public string $appVersion;
     public string $localSecret = '';
@@ -27,6 +28,10 @@ class License extends BaseConfig
 
         $this->apiKey = trim(
             (string) env('LICENSE_API_KEY', '')
+        );
+
+        $this->appCode = trim(
+            (string) env('LICENSE_APP_CODE', 'PRESENSI')
         );
 
         $this->apiSecret = trim(

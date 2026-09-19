@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Libraries\Installer\InstallationIdentity;
+use App\Libraries\Installer\EnvWriter;
 use App\Libraries\License\TrialReinstallGuard;
 use App\Libraries\License\ServerIdentity;
 use App\Libraries\License\LicenseService;
@@ -39,19 +40,28 @@ final class TrialInstall extends BaseController
         )->uuid();
     }
 
+    /**
+     * Tahap 1 — Konfigurasi Awal.
+     */
     public function index(): string
+    {
+        $checks = $this->initialChecks();
+
+        return view('trial/initial', [
+            'checks' => $checks,
+            'allReady' => $checks['allReady'],
+        ]);
+    }
+
+    /**
+     * Tahap 2 — Pengecekan UUID.
+     */
+    public function uuidCheck(): string
     {
         $guard = $this->guard();
 
-        $runtime = new LicenseRuntimeModel();
-
-        $row = $runtime->getRuntime();
-
-        $credentialStore =
-            new LicenseCredentialStore(
-                $runtime,
-                new LicenseCrypto()
-            );
+        $row = null;
+        $credentialReady = false;
 
         /*
          * Canonical Trial identity.
@@ -62,6 +72,88 @@ final class TrialInstall extends BaseController
          */
         $installationUuid =
             $this->installationUuid();
+
+        /*
+         * PRE-INSTALLATION UUID DECISION.
+         *
+         * Read-only check to License Server.
+         * This MUST NOT claim or create a Trial license.
+         */
+        $uuidDecision = null;
+        $uuidDecisionError = null;
+
+        try {
+            $decisionClient =
+                new TrialBootstrapClient();
+
+            $decision =
+                $decisionClient->requestTrialDecision();
+
+            $uuidDecision = strtoupper(
+                trim(
+                    (string) (
+                        $decision['install_status']
+                        ?? ''
+                    )
+                )
+            );
+
+            $uuidCanContinue =
+                $decision['data']['can_continue']
+                ?? null;
+
+            $uuidStatus = strtolower(
+                trim(
+                    (string) (
+                        $decision['data']['status']
+                        ?? ''
+                    )
+                )
+            );
+
+            $uuidExpiresAt =
+                $decision['data']['expires_at']
+                ?? null;
+
+            if (
+                ! in_array(
+                    $uuidDecision,
+                    [
+                        TrialBootstrapClient::RESPONSE_NEW_TRIAL,
+                        TrialBootstrapClient::RESPONSE_EXISTING_TRIAL,
+                        TrialBootstrapClient::RESPONSE_EXISTING_FULL,
+                    ],
+                    true
+                )
+            ) {
+                throw new \RuntimeException(
+                    'Status Installation UUID tidak dikenal.'
+                );
+            }
+
+            session()->set([
+                'trial_install_uuid_decision' =>
+                    $uuidDecision,
+                'trial_install_uuid_can_continue' =>
+                    $uuidCanContinue,
+                'trial_install_uuid_status' =>
+                    $uuidStatus,
+                'trial_install_uuid_expires_at' =>
+                    $uuidExpiresAt,
+                'trial_install_uuid' =>
+                    $installationUuid,
+            ]);
+        } catch (\Throwable $e) {
+            $uuidDecision = null;
+            $uuidDecisionError =
+                $e->getMessage();
+
+            log_message(
+                'error',
+                'TRIAL_UUID_DECISION_ERROR='
+                . $e->getMessage()
+            );
+        }
 
         return view('trial/install', [
             'allowed' =>
@@ -82,8 +174,26 @@ final class TrialInstall extends BaseController
             'installationUuidExists' =>
                 $installationUuid !== '',
 
+            /*
+             * Read-only License Server decision.
+             */
+            'uuidDecision' =>
+                $uuidDecision,
+
+            'uuidDecisionError' =>
+                $uuidDecisionError,
+
+            'uuidCanContinue' =>
+                $uuidCanContinue ?? null,
+
+            'uuidStatus' =>
+                $uuidStatus ?? '',
+
+            'uuidExpiresAt' =>
+                $uuidExpiresAt ?? null,
+
             'credentialReady' =>
-                $credentialStore->has(),
+                false,
 
             'runtime' =>
                 $row,
@@ -530,6 +640,145 @@ final class TrialInstall extends BaseController
      * API secret is returned by License Server and stored encrypted.
      */
     /**
+     * Tahap 4 — Halaman Konfigurasi.
+     *
+     * Hanya menampilkan ringkasan konfigurasi sebelum proses
+     * konfigurasi aplikasi dan aktivasi Trial dijalankan.
+     */
+    public function configuration(): string|ResponseInterface
+    {
+        $database = session()->get('trial_install_database');
+
+        if (! is_array($database)) {
+            return redirect()
+                ->to('/trial/install/database')
+                ->with(
+                    'error',
+                    'Konfigurasi database Tahap 3 belum tersedia.'
+                );
+        }
+
+        return view('trial/configuration', [
+            'installationUuid' => $this->installationUuid(),
+            'database' => $database,
+        ]);
+    }
+
+    /**
+     * Tahap 4 — Proses Konfigurasi Aplikasi dan Lisensi.
+     *
+     * Menulis .env lalu menjalankan Claim, Store Credential,
+     * Store License Key, Activate, dan Validate Trial.
+     */
+    public function processConfiguration(): string|ResponseInterface
+    {
+        $database = session()->get('trial_install_database');
+
+        if (
+            ! is_array($database)
+            || ! ($database['hostname'] ?? null)
+            || ! ($database['database'] ?? null)
+            || ! ($database['username'] ?? null)
+        ) {
+            return redirect()
+                ->to('/trial/install/database')
+                ->with(
+                    'error',
+                    'Konfigurasi database Tahap 3 belum tersedia.'
+                );
+        }
+
+        try {
+            $appConfig = config('App');
+            $licenseConfig = config('License');
+
+            $encryptionKey =
+                (string) env('encryption.key', '');
+
+            if ($encryptionKey === '') {
+                $encryptionKey = bin2hex(
+                    random_bytes(32)
+                );
+            }
+
+            $envWriter = new EnvWriter();
+
+            $envWriter->write([
+                'CI_ENVIRONMENT' =>
+                    env(
+                        'CI_ENVIRONMENT',
+                        'production'
+                    ),
+
+                'app.baseURL' =>
+                    (string) $appConfig->baseURL,
+
+                'database.default.hostname' =>
+                    $database['hostname'],
+
+                'database.default.database' =>
+                    $database['database'],
+
+                'database.default.username' =>
+                    $database['username'],
+
+                'database.default.password' =>
+                    $database['password'],
+
+                'database.default.port' =>
+                    $database['port'],
+
+                'encryption.key' =>
+                    $encryptionKey,
+
+                'LICENSE_BASE_URL' =>
+                    (string) $licenseConfig->baseUrl,
+
+                'LICENSE_APP_CODE' =>
+                    (string) $licenseConfig->appCode,
+
+                'LICENSE_APP_VERSION' =>
+                    (string) $licenseConfig->appVersion,
+
+                'LICENSE_TIMEOUT' =>
+                    (int) $licenseConfig->timeout,
+
+                'LICENSE_API_KEY' => '',
+
+                'LICENSE_API_SECRET' => '',
+
+                'LICENSE_SECRET' =>
+                    (string) env(
+                        'LICENSE_SECRET',
+                        ''
+                    ),
+            ]);
+
+            session()->set([
+                'trial_install_env_written' => true,
+            ]);
+
+            return $this->bootstrapTrial();
+
+        } catch (\Throwable $e) {
+
+            log_message(
+                'error',
+                'INSTALL_CONFIG_ERROR='
+                . $e->getMessage()
+            );
+
+            return redirect()
+                ->to('/trial/install/database')
+                ->with(
+                    'error',
+                    'Konfigurasi aplikasi gagal: '
+                    . $e->getMessage()
+                );
+        }
+    }
+
+    /**
      * Request and activate Trial License automatically.
      *
      * No Trial License Key or API Key is entered
@@ -547,7 +796,7 @@ final class TrialInstall extends BaseController
      * 8. Activate Trial.
      * 9. Validate Trial.
      */
-    public function bootstrapTrial(): ResponseInterface
+    public function bootstrapTrial(): string|ResponseInterface
     {
         $guard = $this->guard();
 
@@ -561,8 +810,112 @@ final class TrialInstall extends BaseController
                 );
         }
 
-        try {
+        $installationUuid = $this->installationUuid();
 
+        /*
+         * Resume a previously completed Trial installation.
+         *
+         * This is important when the database import succeeded and
+         * Trial activation/validation already completed before the
+         * final installation UI was introduced.
+         */
+        $existingRuntime = new LicenseRuntimeModel();
+        $existingRow = $existingRuntime->getRuntime();
+
+        if (
+            is_array($existingRow)
+            && strtolower(
+                trim((string) ($existingRow['license_type'] ?? ''))
+            ) === 'trial'
+            && strtolower(
+                trim((string) ($existingRow['activate_status'] ?? ''))
+            ) === 'active'
+            && strtolower(
+                trim((string) ($existingRow['validate_status'] ?? ''))
+            ) === 'valid'
+        ) {
+            $stepsStatus = [
+                'store' => [
+                    'status' => 'success',
+                    'message' =>
+                        'API credential Trial sudah tersimpan secara terenkripsi.',
+                ],
+                'license_key' => [
+                    'status' => 'success',
+                    'message' =>
+                        'Trial License Key sudah tersimpan.',
+                ],
+                'activate' => [
+                    'status' => 'success',
+                    'message' =>
+                        'Lisensi Trial sudah aktif.',
+                ],
+                'validate' => [
+                    'status' => 'success',
+                    'message' =>
+                        'Lisensi Trial sudah tervalidasi.',
+                ],
+                'final' => [
+                    'status' => 'success',
+                    'message' =>
+                        'Runtime lisensi ditemukan dalam kondisi valid.',
+                ],
+            ];
+
+            if (
+                !is_file(ROOTPATH . '.env')
+                || !is_readable(ROOTPATH . '.env')
+            ) {
+                $stepsStatus['final'] = [
+                    'status' => 'error',
+                    'message' =>
+                        'File .env tidak tersedia.',
+                ];
+
+                return view('trial/license-process', [
+                    'installationUuid' => $installationUuid,
+                    'licenseType' => 'trial',
+                    'licenseStatus' => 'PROCESS ERROR',
+                    'stepsStatus' => $stepsStatus,
+                    'overallStatus' => 'error',
+                ]);
+            }
+
+            return view('trial/license-process', [
+                'installationUuid' => $installationUuid,
+                'licenseType' => 'trial',
+                'licenseStatus' => 'ACTIVE / VALID',
+                'stepsStatus' => $stepsStatus,
+                'overallStatus' => 'success',
+            ]);
+        }
+
+        $stepsStatus = [
+            'store' => [
+                'status' => 'pending',
+                'message' => 'Belum diproses.',
+            ],
+            'license_key' => [
+                'status' => 'pending',
+                'message' => 'Belum diproses.',
+            ],
+            'activate' => [
+                'status' => 'pending',
+                'message' => 'Belum diproses.',
+            ],
+            'validate' => [
+                'status' => 'pending',
+                'message' => 'Belum diproses.',
+            ],
+            'final' => [
+                'status' => 'pending',
+                'message' => 'Belum diproses.',
+            ],
+        ];
+
+        $currentStep = 'store';
+
+        try {
             log_message(
                 'info',
                 'TRIAL_INSTALL_REQUEST_ENTERED'
@@ -570,26 +923,32 @@ final class TrialInstall extends BaseController
 
             /*
              * Request Trial License automatically.
-             *
-             * Installation UUID is handled internally
-             * by TrialBootstrapClient.
              */
             $client = new TrialBootstrapClient();
-
             $credential = $client->requestTrial();
 
-            /*
-             * License Server decision.
-             *
-             * NEW_TRIAL
-             * → continue automatic installation.
-             *
-             * EXISTING_TRIAL
-             * → installation already has Trial.
-             *
-             * EXISTING_FULL
-             * → installation already has Full.
-             */
+            log_message(
+                'info',
+                'TRIAL_CREDENTIAL_RECEIVED=' . json_encode(
+                    [
+                        'response_state' =>
+                            $credential['response_state'] ?? null,
+                        'license_type' =>
+                            $credential['license_type'] ?? null,
+                        'status' =>
+                            $credential['status'] ?? null,
+                        'has_license_key' =>
+                            !empty($credential['license_key']),
+                        'has_api_key' =>
+                            !empty($credential['api_key']),
+                        'has_api_secret' =>
+                            !empty($credential['api_secret']),
+                    ],
+                    JSON_UNESCAPED_SLASHES
+                    | JSON_UNESCAPED_UNICODE
+                )
+            );
+
             $responseState = strtoupper(
                 trim(
                     (string) (
@@ -610,8 +969,7 @@ final class TrialInstall extends BaseController
                         (string) (
                             $credential['message']
                             ?? 'Installation UUID ini sudah memiliki '
-                            . 'lisensi Trial. Silakan Upgrade ke Full '
-                            . 'atau hentikan instalasi.'
+                            . 'lisensi Trial.'
                         )
                     );
             }
@@ -627,8 +985,7 @@ final class TrialInstall extends BaseController
                         (string) (
                             $credential['message']
                             ?? 'Installation UUID ini sudah pernah '
-                            . 'terdaftar menggunakan lisensi Full. '
-                            . 'Proses instalasi dihentikan.'
+                            . 'terdaftar menggunakan lisensi Full.'
                         )
                     );
             }
@@ -643,11 +1000,6 @@ final class TrialInstall extends BaseController
                 );
             }
 
-            /*
-             * NEW_TRIAL.
-             *
-             * Continue automatic Trial installation.
-             */
             $licenseKey = strtoupper(
                 trim(
                     (string) (
@@ -680,9 +1032,6 @@ final class TrialInstall extends BaseController
                 )
             );
 
-            /*
-             * Validate Trial response.
-             */
             if ($licenseKey === '') {
                 throw new \RuntimeException(
                     'License Server tidak mengembalikan Trial License Key.'
@@ -707,14 +1056,13 @@ final class TrialInstall extends BaseController
                 );
             }
 
-            /*
-             * Local license runtime.
-             */
             $runtime = new LicenseRuntimeModel();
 
             /*
-             * Store API credential encrypted.
+             * 1. Store encrypted API credential.
              */
+            $currentStep = 'store';
+
             $store = new LicenseCredentialStore(
                 $runtime,
                 new LicenseCrypto()
@@ -725,9 +1073,17 @@ final class TrialInstall extends BaseController
                 $apiSecret
             );
 
+            $stepsStatus['store'] = [
+                'status' => 'success',
+                'message' =>
+                    'API credential berhasil disimpan secara terenkripsi.',
+            ];
+
             /*
-             * Store Trial License Key locally.
+             * 2. Store Trial License Key.
              */
+            $currentStep = 'license_key';
+
             $service = new LicenseService(
                 runtime: $runtime
             );
@@ -736,9 +1092,17 @@ final class TrialInstall extends BaseController
                 $licenseKey
             );
 
+            $stepsStatus['license_key'] = [
+                'status' => 'success',
+                'message' =>
+                    'Trial License Key berhasil disimpan.',
+            ];
+
             /*
-             * Activate Trial.
+             * 3. Activate Trial.
              */
+            $currentStep = 'activate';
+
             $result = $service->activate(
                 $licenseKey
             );
@@ -756,9 +1120,17 @@ final class TrialInstall extends BaseController
                 );
             }
 
+            $stepsStatus['activate'] = [
+                'status' => 'success',
+                'message' =>
+                    'Lisensi Trial berhasil diaktifkan.',
+            ];
+
             /*
-             * Validate Trial after activation.
+             * 4. Validate Trial.
              */
+            $currentStep = 'validate';
+
             $validateResult = $service->validate();
 
             if (
@@ -774,19 +1146,95 @@ final class TrialInstall extends BaseController
                 );
             }
 
+            $stepsStatus['validate'] = [
+                'status' => 'success',
+                'message' =>
+                    'Lisensi Trial berhasil divalidasi.',
+            ];
+
+            /*
+             * 5. Final Installation Verification.
+             */
+            $currentStep = 'final';
+
+            $requiredTables = [
+                'users',
+                'admin',
+                'license_runtime',
+            ];
+
+            $db = \Config\Database::connect();
+            $missingTables = [];
+
+            foreach ($requiredTables as $table) {
+                if (!$db->tableExists($table)) {
+                    $missingTables[] = $table;
+                }
+            }
+
+            if ($missingTables !== []) {
+                throw new \RuntimeException(
+                    'Final Installation gagal. Tabel wajib tidak ditemukan: '
+                    . implode(', ', $missingTables)
+                );
+            }
+
+            $runtimeRow = $runtime->getRuntime();
+
+            if (!is_array($runtimeRow)) {
+                throw new \RuntimeException(
+                    'Final Installation gagal. Runtime lisensi tidak ditemukan.'
+                );
+            }
+
+            if (
+                strtolower(
+                    trim(
+                        (string) (
+                            $runtimeRow['validate_status'] ?? ''
+                        )
+                    )
+                ) !== 'valid'
+            ) {
+                throw new \RuntimeException(
+                    'Final Installation gagal. Status validasi runtime belum valid.'
+                );
+            }
+
+            if (
+                !is_file(ROOTPATH . '.env')
+                ||
+                !is_readable(ROOTPATH . '.env')
+            ) {
+                throw new \RuntimeException(
+                    'Final Installation gagal. File .env tidak tersedia.'
+                );
+            }
+
+            $stepsStatus['final'] = [
+                'status' => 'success',
+                'message' =>
+                    'Database, environment, dan runtime lisensi telah diverifikasi.',
+            ];
+
             log_message(
                 'info',
                 'TRIAL_INSTALL_COMPLETED'
             );
 
-            return redirect()
-                ->to('/auth/login')
-                ->with(
-                    'success',
-                    'Lisensi Trial berhasil diperoleh dan diaktifkan. Silakan login.'
-                );
+            return view('trial/license-process', [
+                'installationUuid' => $installationUuid,
+                'licenseType' => $licenseType,
+                'licenseStatus' => 'ACTIVE / VALID',
+                'stepsStatus' => $stepsStatus,
+                'overallStatus' => 'success',
+            ]);
 
         } catch (\Throwable $e) {
+            $stepsStatus[$currentStep] = [
+                'status' => 'error',
+                'message' => $e->getMessage(),
+            ];
 
             log_message(
                 'error',
@@ -794,15 +1242,300 @@ final class TrialInstall extends BaseController
                 . $e->getMessage()
             );
 
+            return view('trial/license-process', [
+                'installationUuid' => $installationUuid,
+                'licenseType' => 'trial',
+                'licenseStatus' => 'PROCESS ERROR',
+                'stepsStatus' => $stepsStatus,
+                'overallStatus' => 'error',
+            ]);
+        }
+    }
+
+
+    /**
+     * Display Create Administrator step after successful
+     * Trial activation, validation, and final installation.
+     */
+    public function admin(): string|ResponseInterface
+    {
+        $runtime = new LicenseRuntimeModel();
+        $row = $runtime->getRuntime();
+
+        if (!is_array($row)) {
             return redirect()
                 ->to('/trial/install')
                 ->with(
                     'error',
-                    $e->getMessage()
+                    'Runtime lisensi belum tersedia.'
                 );
         }
+
+        $licenseType = strtolower(
+            trim((string) ($row['license_type'] ?? ''))
+        );
+
+        $activateStatus = strtolower(
+            trim((string) ($row['activate_status'] ?? ''))
+        );
+
+        $validateStatus = strtolower(
+            trim((string) ($row['validate_status'] ?? ''))
+        );
+
+        if (
+            $licenseType !== 'trial'
+            || $activateStatus !== 'active'
+            || $validateStatus !== 'valid'
+        ) {
+            return redirect()
+                ->to('/trial/install')
+                ->with(
+                    'error',
+                    'Tahap lisensi Trial belum berhasil. '
+                    . 'Create Admin belum dapat dilakukan.'
+                );
+        }
+
+        foreach (['users', 'admin'] as $table) {
+            if (! \Config\Database::connect()->tableExists($table)) {
+                return redirect()
+                    ->to('/trial/install')
+                    ->with(
+                        'error',
+                        'Tabel wajib untuk Create Admin tidak tersedia: '
+                        . $table
+                    );
+            }
+        }
+
+        return view('trial/final', [
+            'installationUuid' =>
+                $this->installationUuid(),
+            'licenseStatus' =>
+                'ACTIVE / VALID',
+        ]);
     }
 
+    /**
+     * Create the first administrator account.
+     *
+     * Creates the users record and its admin profile atomically.
+     */
+    public function finalizeAdmin(): string|ResponseInterface
+    {
+        $runtime = new LicenseRuntimeModel();
+        $row = $runtime->getRuntime();
+
+        if (!is_array($row)) {
+            return redirect()
+                ->to('/trial/install/admin')
+                ->with(
+                    'error',
+                    'Runtime lisensi belum tersedia.'
+                );
+        }
+
+        $licenseType = strtolower(
+            trim((string) ($row['license_type'] ?? ''))
+        );
+
+        $activateStatus = strtolower(
+            trim((string) ($row['activate_status'] ?? ''))
+        );
+
+        $validateStatus = strtolower(
+            trim((string) ($row['validate_status'] ?? ''))
+        );
+
+        if (
+            $licenseType !== 'trial'
+            || $activateStatus !== 'active'
+            || $validateStatus !== 'valid'
+        ) {
+            return redirect()
+                ->to('/trial/install')
+                ->with(
+                    'error',
+                    'Lisensi Trial belum berstatus ACTIVE / VALID.'
+                );
+        }
+
+        $namaAdmin = trim(
+            (string) $this->request->getPost('nama_admin')
+        );
+
+        $waAdmin = trim(
+            (string) $this->request->getPost('wa_admin')
+        );
+
+        $username = trim(
+            (string) $this->request->getPost('username')
+        );
+
+        $email = trim(
+            (string) $this->request->getPost('email')
+        );
+
+        $password = (string) $this->request->getPost('password');
+
+        $passwordConfirm = (string) (
+            $this->request->getPost('password_confirm')
+        );
+
+        $errors = [];
+
+        if ($namaAdmin === '') {
+            $errors[] = 'Nama Administrator wajib diisi.';
+        } elseif (mb_strlen($namaAdmin) > 100) {
+            $errors[] = 'Nama Administrator maksimal 100 karakter.';
+        }
+
+        if ($waAdmin === '') {
+            $errors[] = 'No. WhatsApp Administrator wajib diisi.';
+        } elseif (mb_strlen($waAdmin) > 20) {
+            $errors[] = 'No. WhatsApp Administrator maksimal 20 karakter.';
+        }
+
+        if ($username === '') {
+            $errors[] = 'Username Administrator wajib diisi.';
+        } elseif (mb_strlen($username) > 50) {
+            $errors[] = 'Username Administrator maksimal 50 karakter.';
+        }
+
+        if ($email === '') {
+            $errors[] = 'Email Administrator wajib diisi.';
+        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $errors[] = 'Format email Administrator tidak valid.';
+        } elseif (mb_strlen($email) > 100) {
+            $errors[] = 'Email Administrator maksimal 100 karakter.';
+        }
+
+        if (strlen($password) < 6) {
+            $errors[] = 'Password Administrator minimal 6 karakter.';
+        }
+
+        if ($password !== $passwordConfirm) {
+            $errors[] = 'Konfirmasi password tidak sama.';
+        }
+
+        $db = \Config\Database::connect();
+
+        if (
+            $db->table('users')
+                ->where('username', $username)
+                ->countAllResults() > 0
+        ) {
+            $errors[] = 'Username Administrator sudah digunakan.';
+        }
+
+        if (
+            $db->table('users')
+                ->where('email', $email)
+                ->countAllResults() > 0
+        ) {
+            $errors[] = 'Email Administrator sudah digunakan.';
+        }
+
+        if ($errors !== []) {
+            return view('trial/final', [
+                'installationUuid' =>
+                    $this->installationUuid(),
+                'licenseStatus' =>
+                    'ACTIVE / VALID',
+                'errors' => $errors,
+                'namaAdmin' => $namaAdmin,
+                'waAdmin' => $waAdmin,
+                'username' => $username,
+                'email' => $email,
+            ]);
+        }
+
+        try {
+            $db->transBegin();
+
+            $userId = $db->table('users')->insert([
+                'username' => $username,
+                'email' => $email,
+                'password' => password_hash(
+                    $password,
+                    PASSWORD_DEFAULT
+                ),
+                'role' => 'admin',
+            ], true);
+
+            if ($userId === false) {
+                throw new \RuntimeException(
+                    'Pembuatan user administrator gagal.'
+                );
+            }
+
+            $adminId = $db->table('admin')->insert([
+                'nama_admin' => $namaAdmin,
+                'wa_admin' => $waAdmin,
+                'user_id' => (int) $userId,
+            ], true);
+
+            if ($adminId === false) {
+                throw new \RuntimeException(
+                    'Pembuatan profil administrator gagal.'
+                );
+            }
+
+            if (!$db->transStatus()) {
+                $db->transRollback();
+
+                throw new \RuntimeException(
+                    'Transaksi pembuatan administrator gagal.'
+                );
+            }
+
+            $db->transCommit();
+
+            log_message(
+                'info',
+                'TRIAL_ADMIN_CREATED user_id='
+                . (int) $userId
+                . ' admin_id='
+                . (int) $adminId
+            );
+
+            return view('trial/final', [
+                'installationUuid' =>
+                    $this->installationUuid(),
+                'licenseStatus' =>
+                    'ACTIVE / VALID',
+                'adminCreated' => true,
+                'adminUsername' => $username,
+                'adminEmail' => $email,
+            ]);
+
+        } catch (\Throwable $e) {
+            if ($db->transStatus() !== false) {
+                $db->transRollback();
+            }
+
+            log_message(
+                'error',
+                'TRIAL_ADMIN_CREATE_ERROR='
+                . $e->getMessage()
+            );
+
+            return view('trial/final', [
+                'installationUuid' =>
+                    $this->installationUuid(),
+                'licenseStatus' =>
+                    'ACTIVE / VALID',
+                'error' =>
+                    'Pembuatan administrator gagal: '
+                    . $e->getMessage(),
+                'namaAdmin' => $namaAdmin,
+                'waAdmin' => $waAdmin,
+                'username' => $username,
+                'email' => $email,
+            ]);
+        }
+    }
 
     /**
      * Revalidate existing Trial license after credential recovery.
@@ -845,28 +1578,449 @@ final class TrialInstall extends BaseController
 
 
     /**
+     * Pemeriksaan Tahap 1 — Konfigurasi Awal.
+     *
+     * Tidak membuat database, tidak claim Trial,
+     * dan tidak mengubah runtime License.
+     *
+     * @return array<string, mixed>
+     */
+    private function initialChecks(): array
+    {
+        $requiredExtensions = [
+            'intl',
+            'mbstring',
+            'mysqli',
+            'openssl',
+            'pdo_mysql',
+        ];
+
+        $extensions = [];
+
+        foreach ($requiredExtensions as $extension) {
+            $extensions[$extension] = extension_loaded($extension);
+        }
+
+        $masterSql =
+            ROOTPATH . 'database/masterpresensi_fresh.sql';
+
+        $installationUuid = $this->installationUuid();
+
+        $licenseConfig = config('License');
+
+        $checks = [
+            'php' => [
+                'label' => 'PHP',
+                'value' => PHP_VERSION,
+                'ok' => version_compare(PHP_VERSION, '8.2.0', '>='),
+            ],
+
+            'codeigniter' => [
+                'label' => 'CodeIgniter',
+                'value' => \CodeIgniter\CodeIgniter::CI_VERSION,
+                'ok' => true,
+            ],
+
+            'extensions' => [
+                'label' => 'PHP Extensions',
+                'value' => implode(
+                    ', ',
+                    array_keys(
+                        array_filter($extensions)
+                    )
+                ),
+                'ok' => ! in_array(false, $extensions, true),
+                'details' => $extensions,
+            ],
+
+            'masterSql' => [
+                'label' => 'Master SQL',
+                'value' => $masterSql,
+                'ok' => is_readable($masterSql),
+            ],
+
+            'installationUuid' => [
+                'label' => 'Installation UUID',
+                'value' => $installationUuid,
+                'ok' => $installationUuid !== '',
+            ],
+
+            'licenseServer' => [
+                'label' => 'Trial License Server',
+                'value' => (string) $licenseConfig->baseUrl,
+                'ok' => filter_var(
+                    (string) $licenseConfig->baseUrl,
+                    FILTER_VALIDATE_URL
+                ) !== false,
+            ],
+
+            'appCode' => [
+                'label' => 'Application Code',
+                'value' => (string) $licenseConfig->appCode,
+                'ok' => trim(
+                    (string) $licenseConfig->appCode
+                ) !== '',
+            ],
+        ];
+
+        $checks['allReady'] = true;
+
+        foreach ($checks as $key => $check) {
+            if ($key === 'allReady') {
+                continue;
+            }
+
+            if (($check['ok'] ?? false) !== true) {
+                $checks['allReady'] = false;
+            }
+        }
+
+        return $checks;
+    }
+
+    /**
      * Trial POST is intentionally blocked when an identity exists.
      */
     public function start(): ResponseInterface
     {
-        $guard = $this->guard();
+        $checks = $this->initialChecks();
 
-        if (!$guard->isAllowed()) {
+        if (($checks['allReady'] ?? false) !== true) {
             return redirect()
                 ->to('/trial/install')
                 ->with(
                     'error',
-                    $guard->notice()
-                    ?? 'Instalasi Trial tidak dapat dilakukan.'
+                    'Konfigurasi awal belum memenuhi seluruh persyaratan instalasi.'
                 );
         }
 
+        session()->set([
+            'trial_install_stage_1_complete' => true,
+        ]);
+
         return redirect()
-            ->to('/trial/install')
-            ->with(
-                'success',
-                'Server siap untuk proses instalasi Trial.'
+            ->to('/trial/install/uuid');
+    }
+
+    /**
+     * Database Setup — display database configuration form.
+     *
+     * This stage does NOT connect, create, import, or modify
+     * the application database. Those operations are handled
+     * by the next installation stages.
+     */
+    public function database(): string|ResponseInterface
+    {
+        $rawDecision = session()->get(
+            'trial_install_uuid_decision'
+        );
+
+        $decision = strtoupper(
+            trim(
+                (string) $rawDecision
+            )
+        );
+
+        if ($this->request->is('post')) {
+            log_message(
+                'info',
+                'INSTALL_DB_SESSION_DECISION='
+                . ($decision !== '' ? $decision : 'EMPTY')
             );
+        }
+
+        /*
+         * Tahap 3 hanya boleh dimasuki oleh Installation UUID
+         * yang belum terdaftar pada License Server.
+         *
+         * EXISTING_TRIAL dan EXISTING_FULL bersifat terminal
+         * pada Tahap 2 dan tidak boleh masuk ke Database Setup.
+         */
+        if (
+            $decision !==
+            TrialBootstrapClient::RESPONSE_NEW_TRIAL
+        ) {
+            return redirect()
+                ->to('/trial/install/uuid')
+                ->with(
+                    'error',
+                    'Database Setup hanya dapat dilakukan untuk Installation UUID baru.'
+                );
+        }
+
+        /*
+         * EXISTING_TRIAL wajib diverifikasi ulang langsung ke
+         * License Server agar decision/session lama tidak dapat
+         * dipakai untuk melewati status Trial expired.
+         */
+        if (
+            $decision ===
+            TrialBootstrapClient::RESPONSE_EXISTING_TRIAL
+        ) {
+            try {
+                $freshDecision =
+                    (new TrialBootstrapClient())
+                        ->requestTrialDecision();
+
+                $freshStatus = strtoupper(
+                    trim(
+                        (string) (
+                            $freshDecision['install_status']
+                            ?? ''
+                        )
+                    )
+                );
+
+                $freshCanContinue =
+                    $freshDecision['data']['can_continue']
+                    ?? null;
+
+                if (
+                    $freshStatus !==
+                    TrialBootstrapClient::RESPONSE_EXISTING_TRIAL
+                    || $freshCanContinue !== true
+                ) {
+                    session()->set([
+                        'trial_install_uuid_decision' =>
+                            $freshStatus,
+                        'trial_install_uuid_can_continue' =>
+                            $freshCanContinue,
+                    ]);
+
+                    return redirect()
+                        ->to('/trial/install')
+                        ->with(
+                            'error',
+                            'Lisensi Trial sudah expired. Upgrade ke Full diperlukan.'
+                        );
+                }
+
+                session()->set([
+                    'trial_install_uuid_can_continue' =>
+                        true,
+                    'trial_install_uuid_status' =>
+                        strtolower(
+                            trim(
+                                (string) (
+                                    $freshDecision['data']['status']
+                                    ?? ''
+                                )
+                            )
+                        ),
+                    'trial_install_uuid_expires_at' =>
+                        $freshDecision['data']['expires_at']
+                        ?? null,
+                ]);
+            } catch (\Throwable $e) {
+                log_message(
+                    'error',
+                    'INSTALL_DB_TRIAL_DECISION_RECHECK_ERROR='
+                    . $e->getMessage()
+                );
+
+                return redirect()
+                    ->to('/trial/install')
+                    ->with(
+                        'error',
+                        'Status lisensi Trial tidak dapat diverifikasi. Instalasi dihentikan.'
+                    );
+            }
+        }
+
+        $db = [
+            'hostname' => trim(
+                (string) (
+                    $this->request->getPost('hostname')
+                    ?? 'localhost'
+                )
+            ),
+            'port' => (int) (
+                $this->request->getPost('port')
+                ?? 3306
+            ),
+            'database' => trim(
+                (string) (
+                    $this->request->getPost('database')
+                    ?? ''
+                )
+            ),
+            'username' => trim(
+                (string) (
+                    $this->request->getPost('username')
+                    ?? ''
+                )
+            ),
+            'password' => (string) (
+                $this->request->getPost('password')
+                ?? ''
+            ),
+        ];
+
+        if (
+            $this->request->is('post')
+        ) {
+            log_message(
+                'info',
+                'INSTALL_DB_POST_ENTERED'
+            );
+
+            $errors = [];
+
+            if ($db['hostname'] === '') {
+                $errors[] = 'Database Host wajib diisi.';
+            }
+
+            if (
+                $db['port'] < 1
+                || $db['port'] > 65535
+            ) {
+                $errors[] = 'Database Port tidak valid.';
+            }
+
+            if ($db['database'] === '') {
+                $errors[] = 'Database Name wajib diisi.';
+            }
+
+            if ($db['username'] === '') {
+                $errors[] = 'Database Username wajib diisi.';
+            }
+
+            if ($errors !== []) {
+                return view('trial/database', [
+                    'installationUuid' =>
+                        $this->installationUuid(),
+                    'uuidDecision' =>
+                        $decision,
+                    'db' => $db,
+                    'error' =>
+                        implode(' ', $errors),
+                ]);
+            }
+
+            try {
+                $connection = new \mysqli(
+                    $db['hostname'],
+                    $db['username'],
+                    $db['password'],
+                    $db['database'],
+                    $db['port']
+                );
+
+                if ($connection->connect_errno) {
+                    throw new \RuntimeException(
+                        'Koneksi database gagal: '
+                        . $connection->connect_error
+                    );
+                }
+
+                $connection->set_charset('utf8mb4');
+
+                $sqlFile = ROOTPATH
+                    . 'database/masterpresensi_fresh.sql';
+
+                if (! is_readable($sqlFile)) {
+                    throw new \RuntimeException(
+                        'Master SQL tidak dapat dibaca: '
+                        . $sqlFile
+                    );
+                }
+
+                $sql = file_get_contents($sqlFile);
+
+                if ($sql === false || trim($sql) === '') {
+                    throw new \RuntimeException(
+                        'Master SQL kosong atau gagal dibaca.'
+                    );
+                }
+
+                if (! $connection->multi_query($sql)) {
+                    throw new \RuntimeException(
+                        'Import Master SQL gagal: '
+                        . $connection->error
+                    );
+                }
+
+                do {
+                    if ($result = $connection->store_result()) {
+                        $result->free();
+                    }
+
+                    if (
+                        $connection->more_results()
+                        && ! $connection->next_result()
+                    ) {
+                        throw new \RuntimeException(
+                            'Import Master SQL gagal: '
+                            . $connection->error
+                        );
+                    }
+                } while ($connection->more_results());
+
+                $connection->close();
+
+                session()->set([
+                    'trial_install_database' =>
+                        $db,
+
+                    'trial_install_database_tested' =>
+                        true,
+
+                    'trial_install_database_imported' =>
+                        true,
+
+                    'trial_install_env_written' =>
+                        false,
+                ]);
+
+                return view('trial/database', [
+                    'installationUuid' =>
+                        $this->installationUuid(),
+
+                    'uuidDecision' =>
+                        $decision,
+
+                    'db' =>
+                        $db,
+
+                    'connectionChecked' =>
+                        true,
+
+                    'databaseImported' =>
+                        true,
+
+                    'error' =>
+                        null,
+
+                    'success' =>
+                        'Koneksi database berhasil dan Master SQL berhasil diimpor.',
+                ]);
+            } catch (\Throwable $e) {
+                log_message(
+                    'error',
+                    'INSTALL_DB_ERROR=' . $e->getMessage()
+                );
+
+                return view('trial/database', [
+                    'installationUuid' =>
+                        $this->installationUuid(),
+                    'uuidDecision' =>
+                        $decision,
+                    'db' => $db,
+                    'error' =>
+                        $e->getMessage(),
+                ]);
+            }
+        }
+
+        return view('trial/database', [
+            'installationUuid' =>
+                $this->installationUuid(),
+            'uuidDecision' =>
+                $decision,
+            'db' => $db,
+            'error' => null,
+            'success' => null,
+        ]);
     }
 
     /**
