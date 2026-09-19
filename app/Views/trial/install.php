@@ -423,54 +423,6 @@
                 Ikuti instruksi sesuai status instalasi.
             </div>
 
-            <?php if (!$allowed): ?>
-
-                <span class="badge badge-danger">
-                    INSTALLATION BLOCKED
-                </span>
-
-                <h1>Instalasi Tidak Dapat Dilanjutkan</h1>
-
-                <div class="panel panel-danger">
-                    <?= esc(
-                        $notice
-                        ?? 'Instalasi tidak dapat dilakukan pada server ini.'
-                    ) ?>
-                </div>
-
-                <div class="actions">
-
-                    <a
-                        class="btn btn-secondary"
-                        href="<?= base_url('/trial/install') ?>"
-                    >
-                        KEMBALI
-                    </a>
-
-                    <a
-                        class="btn btn-primary"
-                        href="<?= base_url('/trial/upgrade') ?>"
-                    >
-                        UPGRADE KE FULL
-                    </a>
-
-                    <form
-                        method="post"
-                        action="<?= base_url('/trial/install/stop') ?>"
-                    >
-                        <?= csrf_field() ?>
-
-                        <button
-                            type="submit"
-                            class="btn btn-secondary"
-                        >
-                            STOP INSTALASI
-                        </button>
-                    </form>
-
-                </div>
-
-            <?php else: ?>
 
                 <?php if (($uuidDecision ?? '') === 'NEW_TRIAL'): ?>
 
@@ -738,8 +690,6 @@
                     </div>
 
                 <?php endif; ?>
-
-            <?php endif; ?>
 
         </section>
 

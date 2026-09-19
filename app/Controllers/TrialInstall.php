@@ -6,7 +6,6 @@ namespace App\Controllers;
 
 use App\Libraries\Installer\InstallationIdentity;
 use App\Libraries\Installer\EnvWriter;
-use App\Libraries\License\TrialReinstallGuard;
 use App\Libraries\License\ServerIdentity;
 use App\Libraries\License\LicenseService;
 use App\Libraries\License\LicenseCrypto;
@@ -19,13 +18,6 @@ use CodeIgniter\HTTP\ResponseInterface;
 
 final class TrialInstall extends BaseController
 {
-    private function guard(): TrialReinstallGuard
-    {
-        return new TrialReinstallGuard(
-            new LicenseRuntimeModel()
-        );
-    }
-
     /**
      * Return canonical identity for this
      * PRESENSI application installation.
@@ -58,8 +50,6 @@ final class TrialInstall extends BaseController
      */
     public function uuidCheck(): string
     {
-        $guard = $this->guard();
-
         $row = null;
         $credentialReady = false;
 
@@ -156,15 +146,6 @@ final class TrialInstall extends BaseController
         }
 
         return view('trial/install', [
-            'allowed' =>
-                $guard->isAllowed(),
-
-            'reason' =>
-                $guard->reason(),
-
-            'notice' =>
-                $guard->notice(),
-
             /*
              * New canonical Trial identity.
              */
@@ -798,18 +779,6 @@ final class TrialInstall extends BaseController
      */
     public function bootstrapTrial(): string|ResponseInterface
     {
-        $guard = $this->guard();
-
-        if (!$guard->isAllowed()) {
-            return redirect()
-                ->to('/trial/install')
-                ->with(
-                    'error',
-                    $guard->notice()
-                    ?? 'Instalasi Trial tidak dapat dilakukan.'
-                );
-        }
-
         $installationUuid = $this->installationUuid();
 
         /*
