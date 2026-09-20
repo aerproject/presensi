@@ -591,6 +591,10 @@ CREATE TABLE `pengaturan` (
 
 LOCK TABLES `pengaturan` WRITE;
 /*!40000 ALTER TABLE `pengaturan` DISABLE KEYS */;
+INSERT INTO `pengaturan`
+(`id`, `nama_aplikasi`, `nama_sekolah`, `tahun_pelajaran`, `kop_surat`, `logo_sekolah`, `created_at`, `updated_at`, `aktif`, `batas_masuk_sebelum`, `batas_masuk_sesudah`, `batas_pulang_sebelum`, `batas_pulang_sesudah`)
+VALUES
+(1, 'PRESENSI DIGITAL', 'SMK TEKNOLOGI NUSANTARA', '2026/2027', NULL, NULL, NOW(), NOW(), 1, 60, 120, 0, 180);
 /*!40000 ALTER TABLE `pengaturan` ENABLE KEYS */;
 UNLOCK TABLES;
 

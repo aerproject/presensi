@@ -1,5 +1,13 @@
 <?= $this->extend('layouts/main') ?>
 
+<?php
+$aplikasiModel = new \App\Models\AplikasiModel();
+$pengaturan = $aplikasiModel->first();
+
+$namaAplikasi = $pengaturan['nama_aplikasi'] ?? 'PRESENSI DIGITAL';
+$namaSekolah  = $pengaturan['nama_sekolah'] ?? 'SMK TEKNOLOGI NUSANTARA';
+?>
+
 <style>
 .dashboard-school-name {
     margin-top: 4px !important;
@@ -25,7 +33,49 @@
 <div class="dashboard-wrapper container-fluid px-2 px-md-4">
     
     <div class="text-center my-4">
-        <h4 class="fw-bold text-primary">📊 DASHBOARD ABSENSI</h4>
+        <h4 class="fw-bold text-primary d-flex justify-content-center align-items-center gap-2">
+            <span
+                class="d-inline-flex justify-content-center align-items-center"
+                style="
+                    width: 44px;
+                    height: 44px;
+                    background: #ffffff;
+                    border: 1px solid #cfd6df;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.12);
+                    flex-shrink: 0;
+                "
+            >
+                <svg
+                    width="36"
+                    height="36"
+                    viewBox="0 0 28 28"
+                    xmlns="http://www.w3.org/2000/svg"
+                    aria-hidden="true"
+                >
+                    <!-- QR Code berwarna -->
+                    <rect x="1" y="1" width="9" height="9" rx="1.5" fill="#0d6efd"/>
+                    <rect x="3.5" y="3.5" width="4" height="4" rx=".5" fill="#ffffff"/>
+
+                    <rect x="18" y="1" width="9" height="9" rx="1.5" fill="#198754"/>
+                    <rect x="20.5" y="3.5" width="4" height="4" rx=".5" fill="#ffffff"/>
+
+                    <rect x="1" y="18" width="9" height="9" rx="1.5" fill="#fd7e14"/>
+                    <rect x="3.5" y="20.5" width="4" height="4" rx=".5" fill="#ffffff"/>
+
+                    <rect x="13" y="13" width="4" height="4" rx=".5" fill="#0d6efd"/>
+                    <rect x="19" y="13" width="3" height="3" rx=".5" fill="#dc3545"/>
+                    <rect x="24" y="13" width="3" height="5" rx=".5" fill="#198754"/>
+                    <rect x="13" y="19" width="3" height="3" rx=".5" fill="#6f42c1"/>
+                    <rect x="18" y="19" width="5" height="3" rx=".5" fill="#0d6efd"/>
+                    <rect x="24" y="21" width="3" height="6" rx=".5" fill="#dc3545"/>
+                    <rect x="13" y="24" width="5" height="3" rx=".5" fill="#198754"/>
+                    <rect x="20" y="24" width="3" height="3" rx=".5" fill="#fd7e14"/>
+                </svg>
+            </span>
+
+            <span>DASHBOARD ABSENSI</span>
+        </h4>
        <?php if (!empty($namaSekolah)): ?>
             <div class="dashboard-school-name"
                  style="font-size: 24px !important;

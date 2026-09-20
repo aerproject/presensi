@@ -24,10 +24,28 @@
     <div class="col-md-5">
       <div class="card shadow login-card">
         <div class="card-body">
-          <!-- Logo Sekolah -->
+          <?php
+          $aplikasiModel = new \App\Models\AplikasiModel();
+          $pengaturan = $aplikasiModel->first();
+
+          $namaAplikasi = $pengaturan['nama_aplikasi'] ?? 'PRESENSI DIGITAL';
+          $namaSekolah  = $pengaturan['nama_sekolah'] ?? 'SMK TEKNOLOGI NUSANTARA';
+          $logoSekolah  = $pengaturan['logo_sekolah'] ?? null;
+
+          $logoUrl = !empty($logoSekolah)
+              ? base_url('uploads/logo/' . $logoSekolah)
+              : base_url('images/logosekolah.png');
+          ?>
+
+          <!-- Logo dan Identitas Sekolah -->
           <div class="text-center mb-3">
-            <img src="<?= base_url('assets/img/logo.png') ?>" alt="Logo Sekolah" class="logo mb-2">
-            <h5 class="fw-bold">SMK 2 MEI BANDAR LAMPUNG</h5>
+            <img
+              src="<?= esc($logoUrl) ?>"
+              alt="<?= esc($namaSekolah) ?>"
+              class="logo mb-2"
+            >
+            <h5 class="fw-bold"><?= esc($namaSekolah) ?></h5>
+            <h5 class="fw-bold"><?= esc($namaAplikasi) ?></h5>
           </div>
 
           <h4 class="text-center mb-4">🔐 Login Pengguna</h4>
