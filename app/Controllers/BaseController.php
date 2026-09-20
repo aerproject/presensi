@@ -16,7 +16,6 @@ abstract class BaseController extends Controller
     protected $helpers = ['form'];
 
     protected $session;
-    protected $db;   // TAMBAH INI
 
     public function initController(
         RequestInterface $request,
@@ -26,7 +25,6 @@ abstract class BaseController extends Controller
         parent::initController($request, $response, $logger);
 
 
-        $this->db = \Config\Database::connect();   // TAMBAH INI
     }
 
 
