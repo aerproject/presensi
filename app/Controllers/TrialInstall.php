@@ -739,7 +739,7 @@ final class TrialInstall extends BaseController
                 'trial_install_env_written' => true,
             ]);
 
-            return $this->bootstrapTrial();
+            return redirect()->to('/trial/install/bootstrap');
 
         } catch (\Throwable $e) {
 

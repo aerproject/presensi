@@ -957,6 +957,10 @@ CREATE TABLE `tapel` (
 
 LOCK TABLES `tapel` WRITE;
 /*!40000 ALTER TABLE `tapel` DISABLE KEYS */;
+INSERT INTO `tapel`
+(`id`, `tahun_pelajaran`, `semester`, `aktif`, `created_at`, `updated_at`)
+VALUES
+(1, '2026/2027', 'Ganjil', 1, NOW(), NOW());
 /*!40000 ALTER TABLE `tapel` ENABLE KEYS */;
 UNLOCK TABLES;
 

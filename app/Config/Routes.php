@@ -25,7 +25,7 @@ $routes->post(
     'TrialInstall::processConfiguration'
 );
 
-$routes->post(
+$routes->get(
     'trial/install/bootstrap',
     'TrialInstall::bootstrapTrial'
 );
