@@ -739,6 +739,19 @@ final class TrialInstall extends BaseController
                 'trial_install_env_written' => true,
             ]);
 
+            // Clear CodeIgniter configuration caches after writing .env.
+            // The next request will then load the newly written database
+            // configuration from the environment file.
+            $locator = new \CodeIgniter\Autoloader\FileLocatorCached(
+                new \CodeIgniter\Autoloader\FileLocator(service('autoloader'))
+            );
+            $locator->deleteCache();
+
+            $configCache = WRITEPATH . 'cache/FactoriesCache_config';
+            if (is_file($configCache)) {
+                unlink($configCache);
+            }
+
             return redirect()->to('/trial/install/bootstrap');
 
         } catch (\Throwable $e) {
