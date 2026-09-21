@@ -440,8 +440,45 @@ final class ServerIdentity
             )
         );
 
-        return $configured !== ''
-            ? $configured
+        if ($configured !== '') {
+            return $configured;
+        }
+
+        if (!function_exists('socket_create')) {
+            return null;
+        }
+
+        $socket = @socket_create(
+            AF_INET,
+            SOCK_DGRAM,
+            SOL_UDP
+        );
+
+        if ($socket === false) {
+            return null;
+        }
+
+        @socket_connect(
+            $socket,
+            '1.1.1.1',
+            80
+        );
+
+        $ip = null;
+
+        @socket_getsockname(
+            $socket,
+            $ip
+        );
+
+        @socket_close($socket);
+
+        return filter_var(
+            $ip,
+            FILTER_VALIDATE_IP,
+            FILTER_FLAG_IPV4
+        ) !== false
+            ? $ip
             : null;
     }
 
