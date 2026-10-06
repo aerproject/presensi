@@ -369,7 +369,13 @@
             <?php if (!empty($adminCreated)): ?>
 
                 <div class="success-box">
-                    <strong>✅ Administrator berhasil dibuat.</strong>
+                    <strong>
+                        <?php if (!empty($adminExisting)): ?>
+                            ✅ Administrator sudah tersedia.
+                        <?php else: ?>
+                            ✅ Administrator berhasil dibuat.
+                        <?php endif; ?>
+                    </strong>
                     <br><br>
                     Username:
                     <?= esc($adminUsername ?? '-') ?>

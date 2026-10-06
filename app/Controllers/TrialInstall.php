@@ -6,6 +6,7 @@ namespace App\Controllers;
 
 use App\Libraries\Installer\InstallationIdentity;
 use App\Libraries\Installer\EnvWriter;
+use App\Libraries\Installer\CronWorkerProvisioner;
 use App\Libraries\License\ServerIdentity;
 use App\Libraries\License\LicenseService;
 use App\Libraries\License\LicenseCrypto;
@@ -1291,6 +1292,56 @@ final class TrialInstall extends BaseController
             }
         }
 
+        $db = \Config\Database::connect();
+
+        $existingAdmin = $db->table('users')
+            ->where('role', 'admin')
+            ->orderBy('id', 'ASC')
+            ->get()
+            ->getRowArray();
+
+        if (is_array($existingAdmin)) {
+            try {
+                (new CronWorkerProvisioner())->provision();
+
+                log_message(
+                    'info',
+                    'TRIAL_EXISTING_ADMIN_RECONCILED user_id='
+                    . (int) $existingAdmin['id']
+                );
+            } catch (\Throwable $e) {
+                log_message(
+                    'error',
+                    'TRIAL_WORKER_PROVISION_ERROR='
+                    . $e->getMessage()
+                );
+
+                return view('trial/final', [
+                    'installationUuid' =>
+                        $this->installationUuid(),
+                    'licenseStatus' =>
+                        'ACTIVE / VALID',
+                    'error' =>
+                        'Administrator sudah tersedia, tetapi '
+                        . 'WhatsApp Message Worker gagal dipasang: '
+                        . $e->getMessage(),
+                ]);
+            }
+
+            return view('trial/final', [
+                'installationUuid' =>
+                    $this->installationUuid(),
+                'licenseStatus' =>
+                    'ACTIVE / VALID',
+                'adminCreated' => true,
+                'adminExisting' => true,
+                'adminUsername' =>
+                    (string) ($existingAdmin['username'] ?? ''),
+                'adminEmail' =>
+                    (string) ($existingAdmin['email'] ?? ''),
+            ]);
+        }
+
         return view('trial/final', [
             'installationUuid' =>
                 $this->installationUuid(),
@@ -1433,6 +1484,8 @@ final class TrialInstall extends BaseController
             ]);
         }
 
+        $adminCommitted = false;
+
         try {
             $db->transBegin();
 
@@ -1473,6 +1526,30 @@ final class TrialInstall extends BaseController
             }
 
             $db->transCommit();
+            $adminCommitted = true;
+
+            try {
+                (new CronWorkerProvisioner())->provision();
+
+                log_message(
+                    'info',
+                    'TRIAL_WORKER_PROVISIONED'
+                );
+            } catch (\Throwable $workerError) {
+                log_message(
+                    'error',
+                    'TRIAL_WORKER_PROVISION_ERROR='
+                    . $workerError->getMessage()
+                );
+
+                throw new \RuntimeException(
+                    'Administrator berhasil dibuat, tetapi '
+                    . 'WhatsApp Message Worker gagal dipasang: '
+                    . $workerError->getMessage(),
+                    0,
+                    $workerError
+                );
+            }
 
             log_message(
                 'info',
@@ -1493,24 +1570,36 @@ final class TrialInstall extends BaseController
             ]);
 
         } catch (\Throwable $e) {
-            if ($db->transStatus() !== false) {
-                $db->transRollback();
-            }
+            if (! $adminCommitted) {
+                if ($db->transStatus() !== false) {
+                    $db->transRollback();
+                }
 
-            log_message(
-                'error',
-                'TRIAL_ADMIN_CREATE_ERROR='
-                . $e->getMessage()
-            );
+                log_message(
+                    'error',
+                    'TRIAL_ADMIN_CREATE_ERROR='
+                    . $e->getMessage()
+                );
+
+                $errorMessage =
+                    'Pembuatan administrator gagal: '
+                    . $e->getMessage();
+            } else {
+                log_message(
+                    'error',
+                    'TRIAL_POST_ADMIN_SETUP_ERROR='
+                    . $e->getMessage()
+                );
+
+                $errorMessage = $e->getMessage();
+            }
 
             return view('trial/final', [
                 'installationUuid' =>
                     $this->installationUuid(),
                 'licenseStatus' =>
                     'ACTIVE / VALID',
-                'error' =>
-                    'Pembuatan administrator gagal: '
-                    . $e->getMessage(),
+                'error' => $errorMessage,
                 'namaAdmin' => $namaAdmin,
                 'waAdmin' => $waAdmin,
                 'username' => $username,

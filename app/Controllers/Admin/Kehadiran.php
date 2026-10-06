@@ -8,6 +8,7 @@ use App\Models\SiswaAkademikModel;
 use App\Models\KelasModel;
 use App\Models\JurusanModel;
 use App\Models\TapelModel;
+use App\Models\MessageModel;
 
 class Kehadiran extends BaseController
 {
@@ -16,6 +17,7 @@ class Kehadiran extends BaseController
     protected $kelasModel;
     protected $jurusanModel;
     protected $tapelModel;
+    protected $messageModel;
 
     public function __construct()
     {
@@ -24,6 +26,7 @@ class Kehadiran extends BaseController
         $this->kelasModel         = new KelasModel();
         $this->jurusanModel       = new JurusanModel();
         $this->tapelModel         = new TapelModel();
+        $this->messageModel       = new MessageModel();
     }
 
     /*
@@ -301,6 +304,81 @@ class Kehadiran extends BaseController
                             'error',
                             'Data presensi gagal disimpan. Silakan coba lagi.'
                         );
+                }
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | QUEUE NOTIFIKASI WHATSAPP
+        |--------------------------------------------------------------------------
+        | Hanya presensi manual tanggal hari ini yang membuat notifikasi.
+        | Pengiriman tetap dilakukan asynchronous oleh Message Worker.
+        */
+        $today = date('Y-m-d');
+
+        if ($tanggal === $today) {
+
+            $siswa = $this->siswaAkademikModel
+                ->select("
+                    siswa.users_id,
+                    siswa.nama_siswa,
+                    kelas.nama_kelas,
+                    jurusan.nama_jurusan
+                ")
+                ->join('siswa', 'siswa.id = siswa_akademik.siswa_id')
+                ->join('kelas', 'kelas.id = siswa_akademik.kelas_id')
+                ->join(
+                    'jurusan',
+                    'jurusan.id = siswa_akademik.jurusan_id',
+                    'left'
+                )
+                ->where('siswa_akademik.id', $siswaAkademikId)
+                ->first();
+
+            if ($siswa && !empty($siswa['users_id'])) {
+
+                $nama    = $siswa['nama_siswa'];
+                $kelas   = $siswa['nama_kelas'];
+                $jurusan = $siswa['nama_jurusan'] ?? '-';
+                $status  = $data['status'];
+                $ket     = trim((string) ($data['keterangan'] ?? ''));
+
+                if ($jenis === 'masuk') {
+
+                    if ($status === 'hadir') {
+                        $isiPesan =
+                            "✅ Halo Bpk/Ibu wali {$nama} ({$kelas} - {$jurusan})\n" .
+                            "Presensi masuk Ananda tercatat pukul {$jam}" .
+                            ($ket !== '' ? " ({$ket})" : "");
+                    } else {
+                        $isiPesan =
+                            "ℹ️ Halo Bpk/Ibu wali {$nama} ({$kelas} - {$jurusan})\n" .
+                            "Status kehadiran Ananda: " . strtoupper($status) .
+                            ($ket !== '' ? " ({$ket})" : "");
+                    }
+
+                } else {
+                    $isiPesan =
+                        "ℹ️ {$nama} melakukan absensi pulang pukul {$jam}" .
+                        ($ket !== '' ? " ({$ket})" : "");
+                }
+
+                $pesanSudahAda = $this->messageModel
+                    ->where('users_id', $siswa['users_id'])
+                    ->where('jenis_pesan', $jenis)
+                    ->where('waktu_kirim >=', $tanggal . ' 00:00:00')
+                    ->where('waktu_kirim <=', $tanggal . ' 23:59:59')
+                    ->first();
+
+                if (!$pesanSudahAda) {
+                    $this->messageModel->insert([
+                        'users_id'    => $siswa['users_id'],
+                        'jenis_pesan' => $jenis,
+                        'isi_pesan'   => $isiPesan,
+                        'waktu_kirim' => $tanggal . ' ' . $jam . ':00',
+                        'status'      => 'pending'
+                    ]);
                 }
             }
         }

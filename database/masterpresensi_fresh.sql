@@ -64,7 +64,7 @@ CREATE TABLE `admin` (
   `updated_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`)
-) ENGINE=MyISAM AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -1084,6 +1084,16 @@ CREATE TABLE `wapikey` (
 --
 -- Dumping routines for database 'absensiku'
 --
+--
+-- Foreign key constraints
+--
+
+ALTER TABLE `admin`
+  ADD CONSTRAINT `fk_admin_user`
+  FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
+  ON UPDATE CASCADE
+  ON DELETE CASCADE;
+
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
