@@ -11,7 +11,7 @@
             Input Presensi Manual
         </h3>
 
-        <a href="<?= base_url('admin/kehadiran/siswa') ?>"
+        <a href="<?= base_url('admin/presensi') ?>"
            class="btn btn-secondary">
 
             <i class="bi bi-arrow-left"></i>
@@ -21,6 +21,21 @@
 
     </div>
 
+
+    <!-- FLASH MESSAGE -->
+    <?php if (session()->getFlashdata('success')): ?>
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <?= esc(session()->getFlashdata('success')) ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
+
+    <?php if (session()->getFlashdata('error')): ?>
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <?= esc(session()->getFlashdata('error')) ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
 
     <!-- CARD -->
     <div class="card shadow-sm">
@@ -256,7 +271,7 @@
                     </button>
 
 
-                    <a href="<?= base_url('admin/kehadiran/siswa') ?>"
+                    <a href="<?= base_url('admin/presensi') ?>"
                        class="btn btn-outline-secondary">
 
                         Batal

@@ -13,6 +13,8 @@ final class CronWorkerProvisioner
 
     public function provision(): void
     {
+        $this->prepareWorkerLog();
+
         $projectPath = escapeshellarg(
             rtrim(ROOTPATH, '/')
         );
@@ -59,6 +61,51 @@ final class CronWorkerProvisioner
             false,
             $content
         );
+    }
+
+    private function prepareWorkerLog(): void
+    {
+        $logDirectory = rtrim(WRITEPATH, DIRECTORY_SEPARATOR)
+            . DIRECTORY_SEPARATOR . 'logs';
+
+        $logFile = $logDirectory
+            . DIRECTORY_SEPARATOR . 'message-worker.log';
+
+        if (
+            ! is_dir($logDirectory)
+            && ! mkdir($logDirectory, 0775, true)
+            && ! is_dir($logDirectory)
+        ) {
+            throw new RuntimeException(
+                'Gagal membuat direktori log worker.'
+            );
+        }
+
+        if (! is_writable($logDirectory)) {
+            throw new RuntimeException(
+                'Direktori log worker tidak dapat ditulis.'
+            );
+        }
+
+        if (! is_file($logFile)) {
+            if (touch($logFile) === false) {
+                throw new RuntimeException(
+                    'Gagal membuat file log worker.'
+                );
+            }
+        }
+
+        if (! is_writable($logFile)) {
+            throw new RuntimeException(
+                'File log worker tidak dapat ditulis.'
+            );
+        }
+
+        if (! chmod($logFile, 0664)) {
+            throw new RuntimeException(
+                'Gagal mengatur permission file log worker.'
+            );
+        }
     }
 
     private function run(

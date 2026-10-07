@@ -47,14 +47,16 @@ class Wapikey extends BaseController
         }
 
         $model = new WapikeyModel();
+
+        $input = $this->validateProviderInput();
+        if ($input instanceof \CodeIgniter\HTTP\RedirectResponse) {
+            return $input;
+        }
+
         $data = [
-            'provider'    => $this->request->getPost('provider'),
-            'wa_api_url'  => $this->request->getPost('wa_api_url'),
-            'wa_api_key'  => $this->request->getPost('wa_api_key'),
-            'admin_phone' => $this->request->getPost('admin_phone'),
-            'status'      => $this->request->getPost('status') ?? 'inactive',
-            'created_at'  => date('Y-m-d H:i:s'),
-            'updated_at'  => date('Y-m-d H:i:s'),
+            ...$input,
+            'created_at' => date('Y-m-d H:i:s'),
+            'updated_at' => date('Y-m-d H:i:s'),
         ];
         $model->insert($data);
 
@@ -92,17 +94,68 @@ class Wapikey extends BaseController
         }
 
         $model = new WapikeyModel();
+
+        if (! $model->find($id)) {
+            return redirect()->to('/admin/wapikey')
+                ->with('error', 'Provider tidak ditemukan.');
+        }
+
+        $input = $this->validateProviderInput();
+        if ($input instanceof \CodeIgniter\HTTP\RedirectResponse) {
+            return $input;
+        }
+
         $data = [
-            'provider'    => $this->request->getPost('provider'),
-            'wa_api_url'  => $this->request->getPost('wa_api_url'),
-            'wa_api_key'  => $this->request->getPost('wa_api_key'),
-            'admin_phone' => $this->request->getPost('admin_phone'),
-            'status'      => $this->request->getPost('status'),
-            'updated_at'  => date('Y-m-d H:i:s'),
+            ...$input,
+            'updated_at' => date('Y-m-d H:i:s'),
         ];
         $model->update($id, $data);
 
         return redirect()->to('/admin/wapikey')->with('success', 'Provider berhasil diperbarui.');
+    }
+
+    private function validateProviderInput(): array|\CodeIgniter\HTTP\RedirectResponse
+    {
+        $provider = strtolower(trim((string) $this->request->getPost('provider')));
+        $baseUrl = rtrim(trim((string) $this->request->getPost('wa_api_url')), '/');
+        $apiKey = trim((string) $this->request->getPost('wa_api_key'));
+        $adminPhone = trim((string) $this->request->getPost('admin_phone'));
+        $status = strtolower(trim((string) ($this->request->getPost('status') ?? 'inactive')));
+
+        if (! in_array($provider, ['makesender', 'wisender', 'onesender'], true)) {
+            return redirect()->back()->withInput()
+                ->with('error', 'Provider WhatsApp tidak valid.');
+        }
+
+        if (
+            filter_var($baseUrl, FILTER_VALIDATE_URL) === false
+            || ! in_array(
+                strtolower((string) parse_url($baseUrl, PHP_URL_SCHEME)),
+                ['http', 'https'],
+                true
+            )
+        ) {
+            return redirect()->back()->withInput()
+                ->with('error', 'Base URL gateway tidak valid.');
+        }
+
+        if ($apiKey === '') {
+            return redirect()->back()->withInput()
+                ->with('error', 'WA API Key wajib diisi.');
+        }
+
+        if (! in_array($status, ['active', 'inactive'], true)) {
+            return redirect()->back()->withInput()
+                ->with('error', 'Status provider tidak valid.');
+        }
+
+        return [
+            'provider'    => $provider,
+            'wa_api_url'  => $baseUrl,
+            'wa_api_key'  => $apiKey,
+            'admin_phone' => $adminPhone,
+            'status'      => $status,
+        ];
     }
 
     /**

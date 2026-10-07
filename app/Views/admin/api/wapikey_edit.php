@@ -17,15 +17,19 @@
 
         <div class="mb-3">
             <label for="provider" class="form-label">Provider</label>
-            <input type="text" class="form-control" id="provider" name="provider" 
-                   value="<?= esc($provider['provider'] ?? '') ?>" required>
-            <div class="form-text">Isi sesuai nama provider, misalnya <code>onesender</code> atau <code>wisender</code>.</div>
+            <select class="form-select" id="provider" name="provider" required>
+                <option value="makesender" <?= (($provider['provider'] ?? '') === 'makesender') ? 'selected' : '' ?>>MakeSender</option>
+                <option value="wisender" <?= (($provider['provider'] ?? '') === 'wisender') ? 'selected' : '' ?>>WiSender</option>
+                <option value="onesender" <?= (($provider['provider'] ?? '') === 'onesender') ? 'selected' : '' ?>>OneSender</option>
+            </select>
+            <div class="form-text">Pilih WhatsApp Gateway yang akan digunakan.</div>
         </div>
 
         <div class="mb-3">
-            <label for="wa_api_url" class="form-label">URL Request</label>
+            <label for="wa_api_url" class="form-label">Base URL Gateway</label>
             <input type="text" class="form-control" id="wa_api_url" name="wa_api_url" 
                    value="<?= esc($provider['wa_api_url'] ?? '') ?>" required>
+            <div class="form-text">Masukkan base URL gateway saja, tanpa endpoint seperti <code>/api/v1/messages</code> atau <code>/api/send-message</code>.</div>
         </div>
         
         <div class="mb-3">

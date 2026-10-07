@@ -158,12 +158,16 @@ class Kehadiran extends BaseController
                 siswa_akademik.*,
                 siswa.nama_siswa,
                 siswa.nis,
-                kelas.nama_kelas
+                kelas.nama_kelas,
+                tapel.tahun_pelajaran,
+                tapel.semester
             ")
 
             ->join('siswa', 'siswa.id = siswa_akademik.siswa_id')
 
             ->join('kelas', 'kelas.id = siswa_akademik.kelas_id')
+
+            ->join('tapel', 'tapel.id = siswa_akademik.tapel_id')
 
             ->where('siswa_akademik.tapel_id', $tapelAktif['id'])
 
@@ -259,53 +263,87 @@ class Kehadiran extends BaseController
 
             ->first();
 
-        $data = [
+        $status     = $this->request->getPost('status');
+        $keterangan = $this->request->getPost('keterangan');
 
-            'status'     => $this->request->getPost('status'),
-
-            'keterangan' => $this->request->getPost('keterangan')
-        ];
-
-        if ($jenis == 'masuk') {
-            $data['jam_masuk'] = $jam;
-        } else {
-            $data['jam_pulang'] = $jam;
+        if (!in_array($jenis, ['masuk', 'pulang'], true)) {
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Jenis presensi tidak valid.');
         }
 
-        if ($existing) {
+        /*
+        |--------------------------------------------------------------------------
+        | STATE TRANSITION PRESENSI MANUAL
+        |--------------------------------------------------------------------------
+        | Sama dengan scanner:
+        | 1. Belum ada record        -> hanya boleh Masuk
+        | 2. Sudah Masuk             -> hanya boleh Pulang
+        | 3. Sudah Masuk + Pulang    -> presensi selesai
+        | Koreksi data dilakukan melalui menu Edit Presensi.
+        */
+        if ($jenis === 'masuk') {
 
-            $this->attendanceModel->update($existing['id'], $data);
+            if ($existing && !empty($existing['jam_masuk'])) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Siswa sudah melakukan absensi masuk pada tanggal tersebut.');
+            }
+
+            if ($existing && !empty($existing['jam_pulang'])) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Data presensi sudah memiliki jam pulang. Gunakan Edit untuk koreksi.');
+            }
+
+            $data = [
+                'status'     => $status,
+                'keterangan' => $keterangan,
+                'jam_masuk'  => $jam,
+            ];
+
+            if ($existing) {
+                $saved = $this->attendanceModel->update($existing['id'], $data);
+            } else {
+                $data['siswa_akademik_id'] = $siswaAkademikId;
+                $data['tanggal']            = $tanggal;
+
+                try {
+                    $saved = $this->attendanceModel->insert($data);
+                } catch (\Throwable $e) {
+                    return redirect()->back()
+                        ->withInput()
+                        ->with('error', 'Absensi pada tanggal tersebut sudah tercatat.');
+                }
+            }
 
         } else {
 
-            $data['siswa_akademik_id'] = $siswaAkademikId;
-            $data['tanggal']           = $tanggal;
-
-            $inserted = $this->attendanceModel->insert($data);
-
-            if ($inserted === false) {
-                // Request lain mungkin sudah membuat attendance
-                // untuk siswa + tanggal yang sama.
-                $existingAfterInsert = $this->attendanceModel
-                    ->where('siswa_akademik_id', $siswaAkademikId)
-                    ->where('tanggal', $tanggal)
-                    ->first();
-
-                if ($existingAfterInsert) {
-                    $this->attendanceModel->update(
-                        $existingAfterInsert['id'],
-                        $data
-                    );
-                } else {
-                    return redirect()
-                        ->back()
-                        ->withInput()
-                        ->with(
-                            'error',
-                            'Data presensi gagal disimpan. Silakan coba lagi.'
-                        );
-                }
+            if (!$existing || empty($existing['jam_masuk'])) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Absen pulang hanya dapat dilakukan setelah absen masuk.');
             }
+
+            if (!empty($existing['jam_pulang'])) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Siswa sudah melakukan absensi lengkap pada tanggal tersebut.');
+            }
+
+            $data = [
+                'status'      => $status,
+                'keterangan'  => $keterangan,
+                'jam_pulang'  => $jam,
+            ];
+
+            $saved = $this->attendanceModel->update($existing['id'], $data);
+        }
+
+        if ($saved === false) {
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Data presensi gagal disimpan. Silakan coba lagi.');
         }
 
         /*

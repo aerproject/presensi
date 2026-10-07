@@ -43,7 +43,21 @@
                         <tr>
                             <td><?= $i+1 ?></td>
                             <td><?= esc($row['provider']) ?></td>
-                            <td><code><?= esc($row['wa_api_key']) ?></code></td>
+                            <td>
+                                <?php
+                                $apiKey = (string) ($row['wa_api_key'] ?? '');
+                                if ($apiKey === '') {
+                                    $maskedKey = '-';
+                                } elseif (strlen($apiKey) <= 8) {
+                                    $maskedKey = str_repeat('•', strlen($apiKey));
+                                } else {
+                                    $maskedKey = substr($apiKey, 0, 4)
+                                        . str_repeat('•', 12)
+                                        . substr($apiKey, -5);
+                                }
+                                ?>
+                                <code><?= esc($maskedKey) ?></code>
+                            </td>
                             <td><?= esc($row['admin_phone']) ?></td>
                             <td>
                                 <?php if ($row['status'] === 'active'): ?>
