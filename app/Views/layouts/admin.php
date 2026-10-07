@@ -1,9 +1,26 @@
+<?php
+use App\Models\AplikasiModel;
+
+$aplikasiModel = new AplikasiModel();
+$pengaturan = $aplikasiModel->first();
+
+$namaAplikasi = $pengaturan['nama_aplikasi'] ?? 'Absensi Digital';
+$namaSekolah = $pengaturan['nama_sekolah'] ?? '';
+?>
+
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= esc($title ?? 'Admin Panel') ?> | Absensiku</title>
+
+    <title>
+        <?= esc($title ?? 'Admin Panel') ?>
+        | <?= esc($namaAplikasi) ?>
+        <?php if ($namaSekolah !== ''): ?>
+            - <?= esc($namaSekolah) ?>
+        <?php endif; ?>
+    </title>
 
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -27,7 +44,11 @@
 </div>
 
 <footer class="footer">
-    © <?= date('Y') ?> AerProject. All rights reserved.
+    <?= esc($namaAplikasi) ?>
+    <?php if ($namaSekolah !== ''): ?>
+        | <?= esc($namaSekolah) ?>
+    <?php endif; ?>
+    | © <?= date('Y') ?> AerProject. All rights reserved.
 </footer>
 
 <!-- JQUERY -->

@@ -48,7 +48,6 @@
             <h5 class="fw-bold"><?= esc($namaAplikasi) ?></h5>
           </div>
 
-          <h4 class="text-center mb-4">🔐 Login Pengguna</h4>
 
           <?php if (session()->getFlashdata('error')): ?>
             <div class="alert alert-danger"><?= session()->getFlashdata('error') ?></div>

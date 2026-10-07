@@ -5,6 +5,7 @@ $aplikasiModel = new AplikasiModel();
 $pengaturan = $aplikasiModel->first();
 
 $namaAplikasi = $pengaturan['nama_aplikasi'] ?? 'Absensi Digital';
+$namaSekolah = $pengaturan['nama_sekolah'] ?? '';
 ?>
 
 <!DOCTYPE html>
@@ -14,7 +15,12 @@ $namaAplikasi = $pengaturan['nama_aplikasi'] ?? 'Absensi Digital';
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
-    <title><?= esc($title ?? 'Absensi Digital :: SMK 2 Mei Bandar Lampung') ?></title>
+    <title>
+        <?= esc(
+            $title
+            ?? $namaAplikasi . ($namaSekolah !== '' ? ' :: ' . $namaSekolah : '')
+        ) ?>
+    </title>
     
     <?= $this->include('_partials/head') ?>
 
@@ -30,8 +36,8 @@ $namaAplikasi = $pengaturan['nama_aplikasi'] ?? 'Absensi Digital';
     <div class="container">
 
         <a class="navbar-brand fw-bold" href="<?= base_url('beranda') ?>">
-            <i class="bi bi-shield-check me-1"></i> <?= esc(strtoupper($namaAplikasi)) ?>
-            
+            <i class="bi bi-shield-check me-1"></i>
+            <?= esc(strtoupper($namaAplikasi)) ?>
         </a>
 
         <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMenu">
@@ -76,7 +82,7 @@ $namaAplikasi = $pengaturan['nama_aplikasi'] ?? 'Absensi Digital';
 
 <footer class="footer fixed-bottom text-center">
     <div class="container">
-        Absensi Digital |
+        <?= esc($namaAplikasi) ?> |
         <a href="<?= base_url('/absensi') ?>" class="text-decoration-none text-primary">
             <i class="bi bi-qr-code"></i>
         </a>
