@@ -514,7 +514,10 @@ final class ServerIdentity
             );
 
             if (
-                $mac !== ''
+                preg_match(
+                    '/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/',
+                    $mac
+                ) === 1
                 && $mac !==
                     '00:00:00:00:00:00'
             ) {
