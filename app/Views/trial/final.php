@@ -449,27 +449,6 @@
                     </div>
 
                     <div class="field">
-                        <label for="wa_admin">
-                            No. WhatsApp Administrator
-                        </label>
-
-                        <input
-                            type="text"
-                            id="wa_admin"
-                            name="wa_admin"
-                            value="<?= esc(
-                                old(
-                                    'wa_admin',
-                                    $waAdmin ?? ''
-                                )
-                            ) ?>"
-                            maxlength="20"
-                            autocomplete="tel"
-                            required
-                        >
-                    </div>
-
-                    <div class="field">
                         <label for="username">
                             Username Administrator
                         </label>

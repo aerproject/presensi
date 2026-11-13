@@ -606,19 +606,12 @@
                             KEMBALI
                         </a>
 
-                        <form
-                            method="post"
-                            action="<?= base_url('/trial/install/database') ?>"
+                        <a
+                            href="<?= base_url('/trial/install/database') ?>"
+                            class="btn btn-dark"
                         >
-                            <?= csrf_field() ?>
-
-                            <button
-                                type="submit"
-                                class="btn btn-dark"
-                            >
-                                LANJUT KE DATABASE SETUP →
-                            </button>
-                        </form>
+                            LANJUT KE DATABASE SETUP →
+                        </a>
 
                     </div>
 

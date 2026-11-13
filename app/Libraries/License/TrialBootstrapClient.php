@@ -108,12 +108,34 @@ final class TrialBootstrapClient
             ]
         );
 
+        /*
+         * Installation domain from trusted App configuration.
+         * Never derive licensing identity from HTTP Host.
+         */
+        $installationDomain = strtolower(
+            trim(
+                (string) parse_url(
+                    (string) config('App')->baseURL,
+                    PHP_URL_HOST
+                )
+            )
+        );
+
+        if ($installationDomain === '') {
+            throw new RuntimeException(
+                'Installation domain is required.'
+            );
+        }
+
         $payload = [
             'installation_uuid' =>
                 $installationUuid,
 
             'app_version' =>
                 $this->config->appVersion,
+
+            'domain' =>
+                $installationDomain,
         ];
 
         $timestamp = (string) time();
@@ -273,6 +295,33 @@ final class TrialBootstrapClient
             ]
         );
 
+        /*
+         * Canonical domain from trusted application configuration.
+         * Must match the domain used during Trial Check.
+         */
+        $installationDomain = strtolower(
+            trim(
+                (string) parse_url(
+                    (string) config('App')->baseURL,
+                    PHP_URL_HOST
+                )
+            )
+        );
+
+        if (
+            $installationDomain === ''
+            || !filter_var(
+                $installationDomain,
+                FILTER_VALIDATE_DOMAIN,
+                FILTER_FLAG_HOSTNAME
+            )
+            || !str_contains($installationDomain, '.')
+        ) {
+            throw new RuntimeException(
+                'Installation domain is invalid.'
+            );
+        }
+
         $payload = [
             'installation_uuid' =>
                 $installationUuid,
@@ -282,6 +331,9 @@ final class TrialBootstrapClient
 
             'app_version' =>
                 $this->config->appVersion,
+
+            'domain' =>
+                $installationDomain,
         ];
 
         $timestamp = (string) time();
