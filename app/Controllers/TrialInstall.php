@@ -1398,10 +1398,6 @@ final class TrialInstall extends BaseController
             (string) $this->request->getPost('nama_admin')
         );
 
-        $waAdmin = trim(
-            (string) $this->request->getPost('wa_admin')
-        );
-
         $username = trim(
             (string) $this->request->getPost('username')
         );
@@ -1422,12 +1418,6 @@ final class TrialInstall extends BaseController
             $errors[] = 'Nama Administrator wajib diisi.';
         } elseif (mb_strlen($namaAdmin) > 100) {
             $errors[] = 'Nama Administrator maksimal 100 karakter.';
-        }
-
-        if ($waAdmin === '') {
-            $errors[] = 'No. WhatsApp Administrator wajib diisi.';
-        } elseif (mb_strlen($waAdmin) > 20) {
-            $errors[] = 'No. WhatsApp Administrator maksimal 20 karakter.';
         }
 
         if ($username === '') {
@@ -1478,7 +1468,6 @@ final class TrialInstall extends BaseController
                     'ACTIVE / VALID',
                 'errors' => $errors,
                 'namaAdmin' => $namaAdmin,
-                'waAdmin' => $waAdmin,
                 'username' => $username,
                 'email' => $email,
             ]);
@@ -1489,7 +1478,7 @@ final class TrialInstall extends BaseController
         try {
             $db->transBegin();
 
-            $userId = $db->table('users')->insert([
+            $userInserted = $db->table('users')->insert([
                 'username' => $username,
                 'email' => $email,
                 'password' => password_hash(
@@ -1499,15 +1488,23 @@ final class TrialInstall extends BaseController
                 'role' => 'admin',
             ], true);
 
-            if ($userId === false) {
+            if ($userInserted === false) {
                 throw new \RuntimeException(
                     'Pembuatan user administrator gagal.'
                 );
             }
 
+            $userId = (int) $db->insertID();
+
+            if ($userId <= 0) {
+                throw new \RuntimeException(
+                    'ID user administrator tidak valid.'
+                );
+            }
+
             $adminId = $db->table('admin')->insert([
                 'nama_admin' => $namaAdmin,
-                'wa_admin' => $waAdmin,
+                'wa_admin' => '',
                 'user_id' => (int) $userId,
             ], true);
 
@@ -1601,7 +1598,6 @@ final class TrialInstall extends BaseController
                     'ACTIVE / VALID',
                 'error' => $errorMessage,
                 'namaAdmin' => $namaAdmin,
-                'waAdmin' => $waAdmin,
                 'username' => $username,
                 'email' => $email,
             ]);
