@@ -38,19 +38,205 @@ final class TrialInstall extends BaseController
      */
     public function index(): string
     {
-        $checks = $this->initialChecks();
+        $checked = session()->get(
+            'trial_install_system_checked'
+        ) === true;
+
+        $checks = $checked
+            ? $this->initialChecks()
+            : [];
+
+        $allReady = $checked
+            && (($checks['allReady'] ?? false) === true);
+
+        if (! $allReady) {
+            session()->remove(
+                'trial_install_system_ready'
+            );
+        }
 
         return view('trial/initial', [
             'checks' => $checks,
-            'allReady' => $checks['allReady'],
+            'allReady' => $allReady,
+            'systemChecked' => $checked,
+            'currentBaseUrl' => (string) config('App')->baseURL,
+            'baseUrlSaved' => session()->get(
+                'trial_install_base_url_saved'
+            ),
         ]);
+    }
+
+    /**
+     * Tahap 1 — Explicit system readiness check.
+     */
+    public function checkSystem(): ResponseInterface
+    {
+        session()->remove([
+            'trial_install_system_checked',
+            'trial_install_system_ready',
+            'trial_install_stage_1_complete',
+        ]);
+
+        try {
+            (new EnvWriter())->prepareEnvironment();
+
+            $checks = $this->initialChecks();
+
+            session()->set([
+                'trial_install_system_checked' => true,
+                'trial_install_system_ready' =>
+                    ($checks['allReady'] ?? false) === true,
+            ]);
+
+            if (($checks['allReady'] ?? false) !== true) {
+                return redirect()
+                    ->to('/trial/install')
+                    ->with(
+                        'error',
+                        'Pemeriksaan sistem belum READY.'
+                    );
+            }
+
+            return redirect()
+                ->to('/trial/install')
+                ->with(
+                    'success',
+                    'Seluruh pemeriksaan sistem READY.'
+                );
+
+        } catch (\Throwable $e) {
+            log_message(
+                'error',
+                'STAGE1_SYSTEM_CHECK_ERROR='
+                . $e->getMessage()
+            );
+
+            return redirect()
+                ->to('/trial/install')
+                ->with(
+                    'error',
+                    'Pemeriksaan sistem gagal: '
+                    . $e->getMessage()
+                );
+        }
+    }
+
+    /**
+     * Tahap 1 — Save canonical application Base URL.
+     */
+    public function saveBaseUrl(): ResponseInterface
+    {
+        $checks = $this->initialChecks();
+
+        if (
+            session()->get('trial_install_system_ready') !== true
+            || ($checks['allReady'] ?? false) !== true
+        ) {
+            return redirect()
+                ->to('/trial/install')
+                ->with('error', 'Pemeriksaan sistem belum READY.');
+        }
+
+        $baseUrl = trim((string) $this->request->getPost('base_url'));
+
+        if (
+            strlen($baseUrl) > 255
+            || preg_match('/[\r\n\s]/', $baseUrl)
+            || filter_var($baseUrl, FILTER_VALIDATE_URL) === false
+        ) {
+            return redirect()
+                ->to('/trial/install')
+                ->with('error', 'Format Base URL tidak valid.');
+        }
+
+        $parts = parse_url($baseUrl);
+
+        if (
+            ! is_array($parts)
+            || strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
+            || empty($parts['host'])
+            || isset($parts['user'])
+            || isset($parts['pass'])
+            || isset($parts['query'])
+            || isset($parts['fragment'])
+            || ! in_array(($parts['path'] ?? '/'), ['', '/'], true)
+        ) {
+            return redirect()
+                ->to('/trial/install')
+                ->with('error', 'Gunakan URL HTTPS domain aplikasi tanpa path tambahan.');
+        }
+
+        $canonical = 'https://' . strtolower($parts['host']);
+
+        if (isset($parts['port'])) {
+            $canonical .= ':' . $parts['port'];
+        }
+
+        $canonical .= '/';
+
+        try {
+            (new EnvWriter())->write([
+                'app.baseURL' => $canonical,
+            ]);
+
+            $content = file_get_contents(ROOTPATH . '.env');
+
+            if (
+                $content === false
+                || preg_match(
+                    '/^app\.baseURL[ \t]*=[ \t]*'
+                    . preg_quote($canonical, '/')
+                    . '[ \t]*$/m',
+                    $content
+                ) !== 1
+            ) {
+                throw new \RuntimeException(
+                    'Verifikasi penyimpanan Base URL gagal.'
+                );
+            }
+
+            session()->set([
+                'trial_install_base_url_saved' => $canonical,
+                'trial_install_stage_1_complete' => true,
+            ]);
+
+            return redirect()
+                ->to('/trial/install')
+                ->with('success', 'Base URL berhasil disimpan.');
+
+        } catch (\Throwable $e) {
+            log_message(
+                'error',
+                'STAGE1_BASE_URL_SAVE_ERROR=' . $e->getMessage()
+            );
+
+            return redirect()
+                ->to('/trial/install')
+                ->with('error', 'Penyimpanan Base URL gagal.');
+        }
     }
 
     /**
      * Tahap 2 — Pengecekan UUID.
      */
-    public function uuidCheck(): string
+    public function uuidCheck(): string|ResponseInterface
     {
+        if (
+            session()->get('trial_install_stage_1_complete') !== true
+            || session()->get('trial_install_system_ready') !== true
+            || ! is_string(
+                session()->get('trial_install_base_url_saved')
+            )
+            || session()->get('trial_install_base_url_saved') === ''
+        ) {
+            return redirect()
+                ->to('/trial/install')
+                ->with(
+                    'error',
+                    'Selesaikan Konfigurasi Awal sebelum pengecekan UUID.'
+                );
+        }
+
         $row = null;
         $credentialReady = false;
 
@@ -1758,6 +1944,31 @@ final class TrialInstall extends BaseController
                 ->with(
                     'error',
                     'Konfigurasi awal belum memenuhi seluruh persyaratan instalasi.'
+                );
+        }
+
+        $savedUrl = (string) session()->get(
+            'trial_install_base_url_saved'
+        );
+
+        $envContent = @file_get_contents(ROOTPATH . '.env');
+
+        if (
+            session()->get('trial_install_system_ready') !== true
+            || $savedUrl === ''
+            || $envContent === false
+            || preg_match(
+                '/^app\\.baseURL[ \\t]*=[ \\t]*'
+                . preg_quote($savedUrl, '/')
+                . '[ \\t]*$/m',
+                $envContent
+            ) !== 1
+        ) {
+            return redirect()
+                ->to('/trial/install')
+                ->with(
+                    'error',
+                    'Base URL belum tersimpan atau tidak valid.'
                 );
         }
 

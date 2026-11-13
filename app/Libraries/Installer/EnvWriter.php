@@ -9,6 +9,53 @@ use RuntimeException;
 final class EnvWriter
 {
     /**
+     * Prepare .env before the installer system checks.
+     *
+     * Existing .env must never be overwritten.
+     */
+    public function prepareEnvironment(): void
+    {
+        $envPath = ROOTPATH . '.env';
+        $templatePath = ROOTPATH . '.env.example';
+
+        if (is_file($envPath)) {
+            if (! is_readable($envPath)) {
+                throw new RuntimeException(
+                    'Existing .env is not readable.'
+                );
+            }
+
+            return;
+        }
+
+        if (
+            ! is_file($templatePath)
+            || ! is_readable($templatePath)
+        ) {
+            throw new RuntimeException(
+                '.env.example is unavailable.'
+            );
+        }
+
+        if (! @copy($templatePath, $envPath)) {
+            throw new RuntimeException(
+                'Unable to create .env from .env.example.'
+            );
+        }
+
+        @chmod($envPath, 0640);
+
+        if (
+            ! is_file($envPath)
+            || ! is_readable($envPath)
+        ) {
+            throw new RuntimeException(
+                'Environment preparation verification failed.'
+            );
+        }
+    }
+
+    /**
      * Update installer-managed values without destroying
      * unrelated application configuration.
      *

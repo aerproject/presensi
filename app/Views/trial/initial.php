@@ -322,6 +322,27 @@
                 grid-column: 2;
             }
         }
+
+        /* Stage 1 — compact Base URL layout */
+        .base-url-form {
+            margin-top: 16px !important;
+        }
+
+        .base-url-form .actions {
+            margin-top: 16px;
+        }
+
+        .base-url-form:has(input[readonly]) .actions:empty {
+            display: none;
+        }
+
+        .base-url-confirmation {
+            margin-top: 16px;
+        }
+
+        .base-url-navigation {
+            margin-top: 16px;
+        }
     </style>
 </head>
 
@@ -402,6 +423,8 @@
                 sebelum masuk ke pengecekan Installation UUID.
             </div>
 
+            <?php if (($systemChecked ?? false) === true): ?>
+
             <div class="check-list">
 
                 <?php foreach ($checks as $key => $check): ?>
@@ -442,49 +465,51 @@
 
             </div>
 
-            <?php if (($allReady ?? false) === true): ?>
+            <?php endif; ?>
+
+            <?php if (($systemChecked ?? false) !== true): ?>
+
+                <div class="panel">
+                    <strong>Pemeriksaan sistem belum dijalankan.</strong>
+                    <p>
+                        Klik tombol di bawah untuk memeriksa
+                        persyaratan instalasi dan menyiapkan
+                        file environment aplikasi.
+                    </p>
+                </div>
+
+                <div class="actions">
+                    <form
+                        method="post"
+                        action="<?= base_url('/trial/install/check-system') ?>"
+                    >
+                        <?= csrf_field() ?>
+
+                        <button type="submit" class="btn btn-primary">
+                            CEK PEMERIKSAAN SISTEM
+                        </button>
+                    </form>
+                </div>
+
+            <?php elseif (($allReady ?? false) === true): ?>
 
                 <div class="panel">
                     <strong>Konfigurasi awal siap.</strong>
                     <br>
                     Semua kebutuhan dasar telah terpenuhi.
-                    Lanjutkan ke Tahap 2 untuk pemeriksaan
-                    Installation UUID pada License Server.
+                    Pemeriksaan sistem berhasil. Selanjutnya
+                    lakukan konfigurasi Base URL aplikasi.
                 </div>
 
-                <div class="actions">
 
-                    <a
-                        class="btn btn-secondary"
-                        href="<?= base_url('/beranda') ?>"
-                    >
-                        KELUAR INSTALASI
-                    </a>
-
-                    <form
-                        method="post"
-                        action="<?= base_url('/trial/install') ?>"
-                    >
-                        <?= csrf_field() ?>
-
-                        <button
-                            type="submit"
-                            class="btn btn-primary"
-                        >
-                            LANJUT KE PENGECEKAN UUID →
-                        </button>
-
-                    </form>
-
-                </div>
 
             <?php else: ?>
 
                 <div class="panel panel-danger">
                     <strong>Konfigurasi awal belum siap.</strong>
                     <br>
-                    Perbaiki seluruh persyaratan yang gagal sebelum
-                    melanjutkan instalasi.
+                    Perbaiki persyaratan yang gagal, kemudian
+                    jalankan pemeriksaan sistem kembali.
                 </div>
 
                 <div class="actions">
@@ -496,6 +521,111 @@
                         KEMBALI
                     </a>
 
+                </div>
+
+            <?php endif; ?>
+
+            <?php if (($allReady ?? false) === true): ?>
+
+                <div class="panel">
+                    <strong>Konfigurasi Base URL Aplikasi</strong>
+                    <p>
+                        Masukkan domain HTTPS yang digunakan
+                        untuk mengakses aplikasi Presensi Digital.
+                    </p>
+                </div>
+
+                <form
+                    method="post"
+                    action="<?= base_url('/trial/install/base-url') ?>"
+                    class="base-url-form"
+                >
+                    <?= csrf_field() ?>
+
+                    <label
+                        for="base_url"
+                        style="display:block;font-weight:700;margin-bottom:8px;"
+                    >
+                        Base URL Aplikasi
+                    </label>
+
+                    <input
+                        id="base_url"
+                        name="base_url"
+                        type="url"
+                        <?= !empty($baseUrlSaved) ? 'readonly' : '' ?>
+                        required
+                        maxlength="255"
+                        pattern="https://.*"
+                        value="<?= esc((string) ($baseUrlSaved ?: $currentBaseUrl), 'attr') ?>"
+                        placeholder="https://presensi.sekolah.sch.id/"
+                        style="width:100%;padding:14px;border:1px solid #d1d5db;border-radius:10px;"
+                    >
+
+                    <div class="actions">
+
+
+                        <?php if (empty($baseUrlSaved)): ?>
+                            <a
+                                href="<?= base_url('/beranda') ?>"
+                                class="btn btn-secondary"
+                            >
+                                KELUAR INSTALASI
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                SIMPAN BASE URL
+                            </button>
+                        <?php endif; ?>
+                    </div>
+                </form>
+
+                <?php if (!empty($baseUrlSaved)): ?>
+                    <div class="panel base-url-confirmation">
+                        <strong>Base URL berhasil disimpan.</strong>
+                        <p><?= esc($baseUrlSaved) ?></p>
+                        <p>
+                            Konfigurasi Tahap 1 telah lengkap.
+                            Pengecekan Installation UUID dapat dilanjutkan.
+                        </p>
+                    </div>
+                <?php endif; ?>
+
+                <?php if (!empty($baseUrlSaved)): ?>
+                    <div class="actions base-url-navigation">
+                        <a
+                            href="<?= base_url('/beranda') ?>"
+                            class="btn btn-secondary"
+                        >
+                            KELUAR INSTALASI
+                        </a>
+
+                        <form
+                            method="post"
+                            action="<?= base_url('/trial/install') ?>"
+                        >
+                            <?= csrf_field() ?>
+                            <button type="submit" class="btn btn-primary">
+                                CEK INSTALLATION UUID →
+                            </button>
+                        </form>
+                    </div>
+                <?php endif; ?>
+
+            <?php endif; ?>
+
+            <?php if (($systemChecked ?? false) === true
+                && ($allReady ?? false) !== true): ?>
+
+                <div class="actions">
+                    <form
+                        method="post"
+                        action="<?= base_url('/trial/install/check-system') ?>"
+                    >
+                        <?= csrf_field() ?>
+                        <button type="submit" class="btn btn-primary">
+                            PERIKSA ULANG SISTEM
+                        </button>
+                    </form>
                 </div>
 
             <?php endif; ?>

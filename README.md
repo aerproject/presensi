@@ -46,43 +46,37 @@ Detail teknologi dapat berkembang mengikuti kebutuhan project tanpa mengubah ide
 
 ---
 
+
 ## 📦 Struktur Repository
 
-```text
-presensi/
-├── app/
-├── public/
-├── system/
-├── writable/
-├── tests/
-│
-├── installer/
-│   ├── install.php
-│   ├── Installer.php
-│   ├── Preflight.php
-│   ├── DatabaseInstaller.php
-│   ├── LicenseInstaller.php
-│   ├── SchedulerInstaller.php
-│   ├── WhatsAppWorkerScheduler.php
-│   ├── AlphaScheduler.php
-│   └── Rollback.php
-│
-├── scripts/
-│   ├── install.sh
-│   ├── update.sh
-│   └── uninstall.sh
-│
-├── docs/
-│   ├── INSTALL.md
-│   ├── LICENSE.md
-│   ├── SCHEDULER.md
-│   └── UPGRADE.md
-│
-├── .env.example
-├── .gitignore
-├── composer.json
-├── spark
-└── README.md
+Struktur utama aplikasi:
+
+- app/ — Controller, Model, View, dan konfigurasi
+- app/Controllers/TrialInstall.php — Installer GUI
+- app/Libraries/Installer/ — Komponen instalasi
+- app/Views/trial/ — Antarmuka instalasi
+- database/masterpresensi_fresh.sql — Master SQL instalasi baru
+- public/ — Document root website
+- writable/ — Penyimpanan runtime
+- docs/ — Dokumentasi
+- .env.example — Template konfigurasi
+- composer.json — Dependensi PHP
+
+## 🚀 Instalasi Presensi Digital
+
+Instalasi baru dilakukan melalui GUI dalam lima tahap:
+
+1. Konfigurasi Awal
+2. Pengecekan Installation UUID
+3. Database Setup
+4. Konfigurasi dan Aktivasi Trial
+5. Final Installation
+
+Panduan lengkap: [Instalasi Presensi Digital](docs/INSTALL.md).
+
+**Penting:** Setelah ekstraksi ZIP, sebelum membuka
+installer, hapus hanya fungsi `putenv` dari daftar
+Disabled Functions PHP di aaPanel apabila masih terdaftar.
 
 ---
 
